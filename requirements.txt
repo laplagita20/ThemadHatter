@@ -1,0 +1,33 @@
+# Data Sources
+yfinance>=0.2.31
+fredapi>=0.5.1
+robin-stocks>=3.0.0
+feedparser>=6.0.11
+finnhub-python>=2.4.19
+requests>=2.31.0
+
+# Analysis
+pandas>=2.1.0
+numpy>=1.24.0
+ta>=0.11.0
+textblob>=0.18.0
+
+# Scheduling
+APScheduler>=3.10.4
+
+# Config & Environment
+python-dotenv>=1.0.0
+
+# CLI & Display
+colorama>=0.4.6
+tabulate>=0.9.0
+tqdm>=4.66.0
+
+# Database
+# sqlite3 is built-in
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.12.0
+
+# Utilities
