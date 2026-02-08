@@ -46,7 +46,7 @@ class SECEdgarCollector(BaseCollector):
 
         data = self._cached_call(
             "company_tickers",
-            lambda: self._get(f"{BASE_URL}/files/company_tickers.json"),
+            lambda: self._get("https://www.sec.gov/files/company_tickers.json"),
             ttl=86400,
         )
         if not data:
