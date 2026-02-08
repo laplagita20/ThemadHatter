@@ -36,13 +36,15 @@ class Settings:
 
     # Analysis weights (default, can be overridden by optimizer)
     analysis_weights: dict = field(default_factory=lambda: {
-        "technical": 0.20,
-        "fundamental": 0.30,
+        "technical": 0.18,
+        "fundamental": 0.28,
         "macroeconomic": 0.15,
         "sentiment": 0.10,
-        "geopolitical": 0.05,
+        "geopolitical": 0.03,
         "sector": 0.10,
-        "risk": 0.10,
+        "insider": 0.05,
+        "institutional": 0.02,
+        "risk": 0.09,
     })
 
     # Risk management defaults

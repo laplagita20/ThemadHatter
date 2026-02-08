@@ -25,6 +25,14 @@ FRED_SERIES = {
     "INDPRO": ("Industrial Production Index", "monthly"),
     "DCOILWTICO": ("Crude Oil Price (WTI)", "daily"),
     "DEXUSEU": ("USD/EUR Exchange Rate", "daily"),
+    # Phase 7E: New macro series for Dalio-style analysis
+    "BAMLH0A0HYM2": ("ICE BofA High Yield Spread", "daily"),
+    "T10YIE": ("10-Year Breakeven Inflation Rate", "daily"),
+    "ICSA": ("Initial Jobless Claims", "weekly"),
+    "PERMIT": ("Building Permits", "monthly"),
+    "ACDGNO": ("New Orders Durable Goods", "monthly"),
+    "STLFSI4": ("St. Louis Fed Financial Stress Index", "weekly"),
+    "DTWEXBGS": ("Trade Weighted US Dollar Index", "daily"),
 }
 
 

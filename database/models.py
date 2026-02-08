@@ -302,3 +302,176 @@ class PortfolioDAO:
                VALUES (?, ?, ?, ?, ?)""",
             (total_equity, cash, total_pl, total_pl_pct, num_positions),
         )
+
+
+class ComputedScoreDAO:
+    """Data access for computed scoring models (Piotroski, Altman, Beneish, etc.)."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def insert(self, ticker: str, score_type: str, score_value: float, details: dict = None):
+        self.db.execute_insert(
+            """INSERT INTO computed_scores (ticker, score_type, score_value, details_json)
+               VALUES (?, ?, ?, ?)""",
+            (ticker, score_type, score_value,
+             json.dumps(details, default=str) if details else None),
+        )
+
+    def get_latest(self, ticker: str, score_type: str):
+        return self.db.execute_one(
+            """SELECT * FROM computed_scores
+               WHERE ticker = ? AND score_type = ?
+               ORDER BY computed_at DESC LIMIT 1""",
+            (ticker, score_type),
+        )
+
+    def get_all_latest(self, ticker: str):
+        return self.db.execute(
+            """SELECT cs.* FROM computed_scores cs
+               INNER JOIN (
+                   SELECT ticker, score_type, MAX(computed_at) as max_at
+                   FROM computed_scores WHERE ticker = ?
+                   GROUP BY ticker, score_type
+               ) latest ON cs.ticker = latest.ticker
+                   AND cs.score_type = latest.score_type
+                   AND cs.computed_at = latest.max_at""",
+            (ticker,),
+        )
+
+
+class DCFValuationDAO:
+    """Data access for DCF valuation models."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def insert(self, ticker: str, valuation: dict):
+        self.db.execute_insert(
+            """INSERT INTO dcf_valuations
+               (ticker, intrinsic_value, current_price, margin_of_safety,
+                free_cash_flow, growth_rate, discount_rate, terminal_growth_rate,
+                shares_outstanding, projection_years, inputs_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                ticker,
+                valuation.get("intrinsic_value"),
+                valuation.get("current_price"),
+                valuation.get("margin_of_safety"),
+                valuation.get("free_cash_flow"),
+                valuation.get("growth_rate"),
+                valuation.get("discount_rate"),
+                valuation.get("terminal_growth_rate"),
+                valuation.get("shares_outstanding"),
+                valuation.get("projection_years", 10),
+                json.dumps(valuation.get("inputs", {}), default=str),
+            ),
+        )
+
+    def get_latest(self, ticker: str):
+        return self.db.execute_one(
+            """SELECT * FROM dcf_valuations WHERE ticker = ?
+               ORDER BY computed_at DESC LIMIT 1""",
+            (ticker,),
+        )
+
+
+class InsiderTradeDAO:
+    """Data access for insider trades."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def get_recent(self, ticker: str, days: int = 90):
+        return self.db.execute(
+            """SELECT * FROM insider_trades
+               WHERE ticker = ? AND transaction_date >= date('now', ?)
+               ORDER BY transaction_date DESC""",
+            (ticker, f"-{days} days"),
+        )
+
+    def get_all_recent(self, ticker: str, days: int = 365):
+        return self.db.execute(
+            """SELECT * FROM insider_trades
+               WHERE ticker = ? AND transaction_date >= date('now', ?)
+               ORDER BY transaction_date DESC""",
+            (ticker, f"-{days} days"),
+        )
+
+
+class HedgeFundHoldingDAO:
+    """Data access for 13-F hedge fund holdings."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def get_for_ticker(self, ticker: str, limit: int = 50):
+        return self.db.execute(
+            """SELECT * FROM hedge_fund_holdings
+               WHERE ticker = ?
+               ORDER BY report_date DESC LIMIT ?""",
+            (ticker, limit),
+        )
+
+    def get_latest_reports(self, ticker: str):
+        """Get most recent 13-F reports mentioning this ticker."""
+        return self.db.execute(
+            """SELECT fund_name, fund_cik, shares, value, report_date
+               FROM hedge_fund_holdings
+               WHERE ticker = ? AND report_date = (
+                   SELECT MAX(report_date) FROM hedge_fund_holdings WHERE ticker = ?
+               )
+               ORDER BY value DESC""",
+            (ticker, ticker),
+        )
+
+    def get_historical(self, ticker: str):
+        """Get historical holding snapshots to detect accumulation/distribution."""
+        return self.db.execute(
+            """SELECT report_date,
+                      COUNT(DISTINCT fund_cik) as num_holders,
+                      SUM(shares) as total_shares,
+                      SUM(value) as total_value
+               FROM hedge_fund_holdings
+               WHERE ticker = ?
+               GROUP BY report_date
+               ORDER BY report_date DESC
+               LIMIT 8""",
+            (ticker,),
+        )
+
+
+class RiskSimulationDAO:
+    """Data access for risk simulation results."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def insert(self, simulation: dict):
+        self.db.execute_insert(
+            """INSERT INTO risk_simulations
+               (simulation_type, portfolio_value, var_95, var_99, cvar_95,
+                monte_carlo_json, parameters_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                simulation["simulation_type"],
+                simulation.get("portfolio_value"),
+                simulation.get("var_95"),
+                simulation.get("var_99"),
+                simulation.get("cvar_95"),
+                json.dumps(simulation.get("monte_carlo"), default=str) if simulation.get("monte_carlo") else None,
+                json.dumps(simulation.get("parameters"), default=str) if simulation.get("parameters") else None,
+            ),
+        )
+
+    def get_latest(self, simulation_type: str = None):
+        if simulation_type:
+            return self.db.execute_one(
+                """SELECT * FROM risk_simulations
+                   WHERE simulation_type = ?
+                   ORDER BY computed_at DESC LIMIT 1""",
+                (simulation_type,),
+            )
+        return self.db.execute(
+            "SELECT * FROM risk_simulations ORDER BY computed_at DESC LIMIT 10"
+        )

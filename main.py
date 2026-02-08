@@ -99,6 +99,22 @@ def cmd_optimize_weights(args):
     optimizer.optimize(auto_approve=args.auto)
 
 
+def cmd_risk_report(args):
+    """Generate comprehensive risk report."""
+    from engine.risk_manager import RiskManager
+    rm = RiskManager()
+    rm.print_risk_report()
+
+
+def cmd_dashboard(args):
+    """Launch the Streamlit dashboard."""
+    import subprocess
+    import os
+    dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard", "app.py")
+    print(f"Launching dashboard: streamlit run {dashboard_path}")
+    subprocess.run(["streamlit", "run", dashboard_path], check=True)
+
+
 def cmd_watchlist(args):
     """Manage the stock watchlist."""
     from database.models import StockDAO
@@ -205,6 +221,14 @@ def main():
     p_ow = subparsers.add_parser("optimize-weights", help="Run weight optimization")
     p_ow.add_argument("--auto", action="store_true", help="Auto-approve (skip confirmation)")
     p_ow.set_defaults(func=cmd_optimize_weights)
+
+    # risk-report
+    p_rr = subparsers.add_parser("risk-report", help="Generate comprehensive risk report")
+    p_rr.set_defaults(func=cmd_risk_report)
+
+    # dashboard
+    p_dash = subparsers.add_parser("dashboard", help="Launch Streamlit web dashboard")
+    p_dash.set_defaults(func=cmd_dashboard)
 
     args = parser.parse_args()
 

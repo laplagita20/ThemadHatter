@@ -1,13 +1,17 @@
-"""Confidence breakdown and reasoning chain for decisions."""
+"""Confidence breakdown, conviction scoring, and reasoning chain for decisions."""
 
 import logging
 from analysis.base_analyzer import AnalysisResult
+from database.connection import get_connection
 
 logger = logging.getLogger("stock_model.engine.confidence")
 
 
 class ConfidenceAnalyzer:
-    """Analyzes and explains the confidence level of a decision."""
+    """Analyzes and explains the confidence and conviction level of a decision."""
+
+    def __init__(self):
+        self.db = get_connection()
 
     def explain_confidence(self, results: dict[str, AnalysisResult],
                            composite_score: float) -> dict:
@@ -26,7 +30,7 @@ class ConfidenceAnalyzer:
             if agreement >= 0.8:
                 boosters.append(f"High analyzer agreement ({agreement:.0%} aligned)")
             elif agreement <= 0.4:
-                reducers.append(f"Low analyzer agreement (mixed signals)")
+                reducers.append("Low analyzer agreement (mixed signals)")
 
         # Check individual confidences
         low_conf = [name for name, r in results.items() if r.confidence < 0.4]
@@ -44,20 +48,64 @@ class ConfidenceAnalyzer:
             reducers.append(f"Weak composite score ({composite_score:+.0f})")
 
         # Data coverage
-        if len(results) >= 4:
+        if len(results) >= 7:
+            boosters.append(f"Excellent coverage ({len(results)} analyzers)")
+        elif len(results) >= 4:
             boosters.append(f"Broad coverage ({len(results)} analyzers)")
         elif len(results) <= 2:
             reducers.append(f"Limited coverage (only {len(results)} analyzers)")
 
+        # Professional scoring models present
+        scoring_models = []
+        for r in results.values():
+            for f in r.factors:
+                if f.name in ("Piotroski F-Score", "Altman Z-Score", "Beneish M-Score",
+                              "DCF Intrinsic Value", "DuPont Analysis", "Owner Earnings"):
+                    scoring_models.append(f.name)
+        if len(scoring_models) >= 3:
+            boosters.append(f"Professional models active: {', '.join(scoring_models[:3])}")
+        elif len(scoring_models) >= 1:
+            boosters.append(f"Scoring models: {', '.join(scoring_models)}")
+
+        # Check for critical risk flags
+        critical_risks = []
+        for r in results.values():
+            for f in r.factors:
+                if f.impact <= -20:
+                    critical_risks.append(f.name)
+        if critical_risks:
+            reducers.append(f"Critical risk flags: {', '.join(critical_risks[:3])}")
+
+        # Historical accuracy context
+        try:
+            accuracy = self.db.execute_one(
+                """SELECT
+                     COUNT(*) as total,
+                     SUM(CASE WHEN action_was_correct = 1 THEN 1 ELSE 0 END) as correct
+                   FROM decision_outcomes
+                   WHERE action_was_correct IS NOT NULL"""
+            )
+            if accuracy and accuracy["total"] and accuracy["total"] >= 10:
+                acc_rate = accuracy["correct"] / accuracy["total"]
+                if acc_rate > 0.65:
+                    boosters.append(f"Historical accuracy: {acc_rate:.0%} ({accuracy['total']} decisions)")
+                elif acc_rate < 0.45:
+                    reducers.append(f"Historical accuracy only {acc_rate:.0%} ({accuracy['total']} decisions)")
+        except Exception:
+            pass
+
         return {
             "boosters": boosters,
             "reducers": reducers,
+            "net_conviction": len(boosters) - len(reducers),
             "summary": self._summarize(boosters, reducers),
         }
 
     def _summarize(self, boosters: list[str], reducers: list[str]) -> str:
         net = len(boosters) - len(reducers)
-        if net >= 2:
+        if net >= 3:
+            return "Confidence is strongly supported by multiple factors"
+        elif net >= 2:
             return "Confidence is well-supported by multiple factors"
         elif net <= -2:
             return "Confidence is undermined by several concerns"

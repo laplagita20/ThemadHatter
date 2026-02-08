@@ -1,0 +1,4 @@
+# Dashboard-specific dependencies
+streamlit>=1.30.0
+plotly>=5.18.0
+streamlit-autorefresh>=1.0.1

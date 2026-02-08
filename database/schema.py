@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger("stock_model.schema")
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 TABLES = [
     # --- Phase 1: Foundation ---
@@ -403,6 +403,67 @@ TABLES = [
         approved INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
+
+    # --- Phase 7A: Computed Scores ---
+    """CREATE TABLE IF NOT EXISTS computed_scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        score_type TEXT NOT NULL,
+        score_value REAL,
+        details_json TEXT,
+        computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(ticker, score_type, computed_at)
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS dcf_valuations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        intrinsic_value REAL,
+        current_price REAL,
+        margin_of_safety REAL,
+        free_cash_flow REAL,
+        growth_rate REAL,
+        discount_rate REAL,
+        terminal_growth_rate REAL,
+        shares_outstanding REAL,
+        projection_years INTEGER DEFAULT 10,
+        inputs_json TEXT,
+        computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
+    # --- Phase 7C: Risk Simulation Tables ---
+    """CREATE TABLE IF NOT EXISTS risk_simulations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        simulation_type TEXT NOT NULL,
+        portfolio_value REAL,
+        var_95 REAL,
+        var_99 REAL,
+        cvar_95 REAL,
+        monte_carlo_json TEXT,
+        parameters_json TEXT,
+        computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS correlation_matrix (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tickers_json TEXT NOT NULL,
+        matrix_json TEXT NOT NULL,
+        diversification_ratio REAL,
+        max_correlation REAL,
+        high_corr_pairs_json TEXT,
+        computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS stress_test_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario_name TEXT NOT NULL,
+        scenario_description TEXT,
+        market_shock_pct REAL,
+        portfolio_impact_pct REAL,
+        portfolio_loss REAL,
+        holdings_impact_json TEXT,
+        computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 INDEXES = [
@@ -423,6 +484,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_geopolitical_date ON geopolitical_events(event_date)",
     "CREATE INDEX IF NOT EXISTS idx_earnings_ticker ON earnings_history(ticker)",
     "CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings_history(fiscal_date)",
+    "CREATE INDEX IF NOT EXISTS idx_computed_scores_ticker ON computed_scores(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_computed_scores_type ON computed_scores(score_type)",
+    "CREATE INDEX IF NOT EXISTS idx_dcf_ticker ON dcf_valuations(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_insider_trades_ticker ON insider_trades(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_insider_trades_date ON insider_trades(transaction_date)",
+    "CREATE INDEX IF NOT EXISTS idx_hedge_fund_ticker ON hedge_fund_holdings(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_hedge_fund_date ON hedge_fund_holdings(report_date)",
 ]
 
 
