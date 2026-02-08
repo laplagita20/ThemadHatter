@@ -23,6 +23,7 @@ class Settings:
     # API Keys
     fred_api_key: str = ""
     finnhub_api_key: str = ""
+    alpha_vantage_api_key: str = ""
     sec_edgar_user_agent: str = ""
 
     # Robinhood
@@ -85,6 +86,7 @@ def get_settings() -> Settings:
     _settings = Settings(
         fred_api_key=os.getenv("FRED_API_KEY", ""),
         finnhub_api_key=os.getenv("FINNHUB_API_KEY", ""),
+        alpha_vantage_api_key=os.getenv("ALPHA_VANTAGE_API_KEY", ""),
         sec_edgar_user_agent=os.getenv("SEC_EDGAR_USER_AGENT", ""),
         robinhood_username=os.getenv("ROBINHOOD_USERNAME", ""),
         robinhood_password=os.getenv("ROBINHOOD_PASSWORD", ""),

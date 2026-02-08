@@ -9,6 +9,7 @@ from collectors.fred_collector import FREDCollector
 from collectors.news_collector import NewsCollector
 from collectors.robinhood_collector import RobinhoodCollector
 from collectors.gdelt_collector import GDELTCollector
+from collectors.alpha_vantage import AlphaVantageCollector
 from database.models import StockDAO
 
 logger = logging.getLogger("stock_model.collectors.scheduler")
@@ -20,6 +21,7 @@ COLLECTORS = {
     "news": NewsCollector,
     "robinhood": RobinhoodCollector,
     "gdelt": GDELTCollector,
+    "alpha_vantage": AlphaVantageCollector,
 }
 
 

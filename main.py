@@ -176,7 +176,7 @@ def main():
 
     # collect
     p_col = subparsers.add_parser("collect", help="Run data collection")
-    p_col.add_argument("--source", default="all", help="Data source (yahoo, sec, fred, news, robinhood, gdelt, all)")
+    p_col.add_argument("--source", default="all", help="Data source (yahoo, sec, fred, news, robinhood, gdelt, alpha_vantage, all)")
     p_col.add_argument("--ticker", help="Specific ticker to collect for")
     p_col.set_defaults(func=cmd_collect)
 

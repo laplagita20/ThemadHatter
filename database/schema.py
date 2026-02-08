@@ -211,6 +211,33 @@ TABLES = [
         num_positions INTEGER
     )""",
 
+    # --- Alpha Vantage ---
+    """CREATE TABLE IF NOT EXISTS alpha_vantage_overview (
+        ticker TEXT PRIMARY KEY,
+        analyst_target REAL,
+        beta REAL,
+        revenue_growth_yoy REAL,
+        earnings_growth_yoy REAL,
+        profit_margin REAL,
+        operating_margin REAL,
+        roe REAL,
+        roa REAL,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS earnings_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        fiscal_date TEXT NOT NULL,
+        reported_date TEXT,
+        reported_eps REAL,
+        estimated_eps REAL,
+        surprise REAL,
+        surprise_pct REAL,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(ticker, fiscal_date)
+    )""",
+
     # --- Phase 3: Analysis ---
     """CREATE TABLE IF NOT EXISTS analysis_results (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -394,6 +421,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_holdings_ticker ON portfolio_holdings(ticker)",
     "CREATE INDEX IF NOT EXISTS idx_macro_series ON macro_indicators(series_id)",
     "CREATE INDEX IF NOT EXISTS idx_geopolitical_date ON geopolitical_events(event_date)",
+    "CREATE INDEX IF NOT EXISTS idx_earnings_ticker ON earnings_history(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings_history(fiscal_date)",
 ]
 
 
