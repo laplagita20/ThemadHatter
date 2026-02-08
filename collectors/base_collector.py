@@ -50,7 +50,7 @@ class BaseCollector(ABC):
 
         result = self._rate_limited_call(func, *args, **kwargs)
         if result is not None:
-            self._cache.set(key, result, ttl)
+            self._cache.set(key, result, ttl_seconds=ttl)
         return result
 
     @abstractmethod

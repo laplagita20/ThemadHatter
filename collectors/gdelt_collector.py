@@ -94,7 +94,7 @@ class GDELTCollector(BaseCollector):
                 "url": article.get("url", ""),
             })
 
-        self._cache.set(f"gdelt_{query}", events, ttl=3600)
+        self._cache.set(f"gdelt_{query}", events, ttl_seconds=3600)
         return events
 
     def _calculate_risk_score(self, tone: float, query: str) -> float:

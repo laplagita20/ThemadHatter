@@ -164,7 +164,7 @@ class NewsCollector(BaseCollector):
             })
 
         # Cache for 30 min
-        self._cache.set(f"rss_{source_name}", articles, ttl=1800)
+        self._cache.set(f"rss_{source_name}", articles, ttl_seconds=1800)
         return articles
 
     def _collect_finnhub(self, ticker: str) -> list[dict]:
