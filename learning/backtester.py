@@ -70,7 +70,10 @@ class Backtester:
         entry_date = None
 
         # Resample to weekly to simulate weekly review
-        dates = [d for d in data.index if d >= pd.Timestamp(start)]
+        start_ts = pd.Timestamp(start)
+        if data.index.tz is not None:
+            start_ts = start_ts.tz_localize(data.index.tz)
+        dates = [d for d in data.index if d >= start_ts]
 
         for i, date in enumerate(dates):
             if date not in sma_50.index or date not in sma_200.index:
