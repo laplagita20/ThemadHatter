@@ -25,10 +25,7 @@ class DatabaseConnection:
     @contextmanager
     def connect(self):
         """Context manager yielding a database connection with auto-commit."""
-        conn = sqlite3.connect(
-            str(self.db_path),
-            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-        )
+        conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
         try:
             yield conn

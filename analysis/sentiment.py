@@ -42,13 +42,13 @@ class SentimentAnalyzer(BaseAnalyzer):
         score = 0.0
 
         # Get recent articles
-        articles = self.news_dao.get_recent(ticker, days=30, limit=200)
+        raw_articles = self.news_dao.get_recent(ticker, days=30, limit=200)
 
-        if not articles:
+        if not raw_articles:
             return self._make_result(0, 0.15, [],
                 "No recent news articles found. Run news collection first.")
 
-        articles = list(articles)
+        articles = [dict(a) for a in raw_articles]
 
         # NLP sentiment on all articles
         sentiment_scores = self._analyze_sentiment(articles)
