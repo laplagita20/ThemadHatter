@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime
 from database.connection import get_connection
+from utils.validators import validate_ticker, validate_price, validate_amount, guard_nan
 
 logger = logging.getLogger("stock_model.models")
 
@@ -17,6 +18,8 @@ class StockDAO:
     def upsert(self, ticker: str, company_name: str = None, sector: str = None,
                industry: str = None, cik: str = None, country: str = "US",
                market_cap: float = None):
+        ticker = validate_ticker(ticker)
+        market_cap = validate_price(market_cap)  # reuse: finite, non-negative
         self.db.execute_insert(
             """INSERT INTO stocks (ticker, company_name, sector, industry, cik, country, market_cap)
                VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -281,6 +284,7 @@ class PortfolioDAO:
     def snapshot_holdings(self, holdings: list[dict]):
         now = datetime.now().isoformat()
         for h in holdings:
+            h["ticker"] = validate_ticker(h["ticker"])
             self.db.execute_insert(
                 """INSERT INTO portfolio_holdings
                    (ticker, quantity, average_cost, current_price,

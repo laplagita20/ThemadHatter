@@ -144,14 +144,44 @@ def render():
 
     st.divider()
 
+    # === What-If Slider ===
+    st.subheader("What-If Scenario")
+    portfolio_value = report.get("var", {}).get("portfolio_value") or report.get("monte_carlo", {}).get("portfolio_value", 0)
+    if portfolio_value:
+        market_drop = st.slider("If the market drops by X%:", min_value=0, max_value=50, value=10, step=1)
+        portfolio_beta = report.get("var", {}).get("portfolio_beta", 1.0) or 1.0
+        estimated_loss_pct = market_drop * portfolio_beta
+        estimated_loss_dollar = portfolio_value * estimated_loss_pct / 100
+        col_w1, col_w2, col_w3 = st.columns(3)
+        col_w1.metric("Market Drop", f"-{market_drop}%")
+        col_w2.metric("Est. Portfolio Loss", f"-{estimated_loss_pct:.1f}%", delta=f"-${estimated_loss_dollar:,.0f}")
+        col_w3.metric("Portfolio After", f"${portfolio_value - estimated_loss_dollar:,.0f}")
+
+    st.divider()
+
     # === Drawdown ===
     st.subheader("Maximum Drawdown")
     dd = report.get("max_drawdown", {})
     if "error" not in dd:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Max Drawdown", f"{dd.get('max_drawdown_pct', 0):.1f}%")
         col2.metric("Current Drawdown", f"{dd.get('current_drawdown_pct', 0):.1f}%")
         col3.metric("Peak Equity", f"${dd.get('peak_equity', 0):,.2f}")
+
+        # Drawdown duration
+        dd_start = dd.get("drawdown_start")
+        dd_end = dd.get("drawdown_end")
+        if dd_start and dd_end:
+            try:
+                from datetime import datetime as _dt
+                start = _dt.fromisoformat(str(dd_start)[:10])
+                end = _dt.fromisoformat(str(dd_end)[:10])
+                duration = (end - start).days
+                col4.metric("Drawdown Duration", f"{duration} days")
+            except Exception:
+                col4.metric("Drawdown Duration", "N/A")
+        else:
+            col4.metric("Drawdown Duration", "N/A")
 
         if dd.get("circuit_breaker_active"):
             st.error("CIRCUIT BREAKER ACTIVE - Position sizes should be reduced by 50%")

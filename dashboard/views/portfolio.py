@@ -540,6 +540,7 @@ def render():
 
     total_value = sum(_safe_val(h["market_value"]) for h in holdings)
     total_pl = sum(_safe_val(h["unrealized_pl"]) for h in holdings)
+    total_cost = sum(_safe_val(h.get("average_cost", 0)) * _safe_val(h.get("quantity", 0)) for h in holdings)
     daily_change = sum(_safe_val(h.get("_daily_change", 0)) * _safe_val(h.get("quantity", 0)) for h in holdings)
     num_positions = len(holdings)
 
@@ -547,7 +548,7 @@ def render():
     col1.metric("Portfolio Value", f"${total_value:,.2f}",
                 delta=f"${daily_change:+,.2f} today" if daily_change else None)
     col2.metric("Unrealized P&L", f"${total_pl:+,.2f}",
-                delta=f"{(total_pl / max(total_value - total_pl, 1)) * 100:+.1f}%")
+                delta=f"{(total_pl / max(total_cost, 1)) * 100:+.1f}%")
     col3.metric("Positions", str(num_positions))
 
     sectors = set(h["sector"] for h in holdings if h.get("sector"))
@@ -562,8 +563,37 @@ def render():
     left, right = st.columns([3, 2])
 
     with left:
-        st.subheader("Holdings")
-        holdings_table(holdings)
+        st.subheader("Holdings vs Model Ratings")
+
+        # Merge holdings with latest model recommendations
+        latest_decisions = {}
+        for t in tickers:
+            d = db.execute_one(
+                "SELECT action, composite_score FROM decisions WHERE ticker = ? ORDER BY decided_at DESC LIMIT 1",
+                (t,),
+            )
+            if d:
+                latest_decisions[t] = d
+
+        enriched = []
+        for h in holdings:
+            row = {
+                "Ticker": h["ticker"],
+                "Qty": f"{h['quantity']:.2f}",
+                "Price": f"${h['current_price']:.2f}" if h.get("current_price") else "N/A",
+                "Value": f"${_safe_val(h['market_value']):,.2f}",
+                "P&L %": f"{_safe_val(h.get('unrealized_pl_pct', 0)):+.1f}%",
+            }
+            dec = latest_decisions.get(h["ticker"])
+            if dec:
+                row["Rating"] = dec["action"]
+                row["Score"] = f"{dec['composite_score']:+.1f}"
+            else:
+                row["Rating"] = "N/A"
+                row["Score"] = "-"
+            enriched.append(row)
+
+        st.dataframe(pd.DataFrame(enriched), width="stretch", hide_index=True)
 
         # Delete holding controls
         tickers_in_portfolio = [h["ticker"] for h in holdings]
@@ -577,13 +607,57 @@ def render():
         sector_weights = {}
         for h in holdings:
             sector = h.get("sector") or "Unknown"
-            sector_weights[sector] = sector_weights.get(sector, 0) + (h["market_value"] or 0)
+            sector_weights[sector] = sector_weights.get(sector, 0) + _safe_val(h["market_value"])
 
         if sector_weights and total_value > 0:
             sector_pcts = {k: v / total_value * 100 for k, v in sector_weights.items()}
             fig = create_sector_pie_chart(sector_pcts)
             st.plotly_chart(fig, width="stretch")
             teach_if_enabled("sector_allocation")
+
+    st.divider()
+
+    # === TAX-LOSS HARVESTING ALERTS ===
+    harvest_candidates = [
+        h for h in holdings
+        if _safe_val(h.get("unrealized_pl_pct", 0)) < -5
+    ]
+    if harvest_candidates:
+        with st.expander(f"Tax-Loss Harvesting Candidates ({len(harvest_candidates)})"):
+            st.caption("Holdings with >5% unrealized loss that may qualify for tax-loss harvesting.")
+            harvest_data = [{
+                "Ticker": h["ticker"],
+                "Loss": f"${_safe_val(h['unrealized_pl']):+,.2f}",
+                "Loss %": f"{_safe_val(h.get('unrealized_pl_pct', 0)):+.1f}%",
+                "Cost Basis": f"${_safe_val(h.get('average_cost', 0)):,.2f}",
+                "Current": f"${_safe_val(h.get('current_price', 0)):,.2f}",
+            } for h in harvest_candidates]
+            st.dataframe(pd.DataFrame(harvest_data), width="stretch", hide_index=True)
+
+    # === EARNINGS CALENDAR ===
+    with st.expander("Upcoming Earnings"):
+        earnings_data = []
+        for t in tickers[:20]:  # Cap to avoid slow API calls
+            try:
+                stock_yf = yf.Ticker(t)
+                cal = stock_yf.calendar
+                if cal is not None:
+                    if isinstance(cal, dict):
+                        ed = cal.get("Earnings Date")
+                        if ed:
+                            # Can be a list of dates
+                            date_str = str(ed[0])[:10] if isinstance(ed, list) else str(ed)[:10]
+                            earnings_data.append({"Ticker": t, "Earnings Date": date_str})
+                    elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                        if "Earnings Date" in cal.columns:
+                            date_str = str(cal["Earnings Date"].iloc[0])[:10]
+                            earnings_data.append({"Ticker": t, "Earnings Date": date_str})
+            except Exception:
+                continue
+        if earnings_data:
+            st.dataframe(pd.DataFrame(earnings_data), width="stretch", hide_index=True)
+        else:
+            st.info("No upcoming earnings dates found for holdings.")
 
     st.divider()
 

@@ -4,10 +4,10 @@ import logging
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from ta.trend import SMAIndicator, EMAIndicator, MACD
+from ta.trend import SMAIndicator, EMAIndicator, MACD, ADXIndicator, IchimokuIndicator
 from ta.momentum import RSIIndicator, StochasticOscillator, WilliamsRIndicator
 from ta.volatility import BollingerBands, AverageTrueRange
-from ta.volume import OnBalanceVolumeIndicator
+from ta.volume import OnBalanceVolumeIndicator, MFIIndicator
 
 from analysis.base_analyzer import BaseAnalyzer, AnalysisResult, AnalysisFactor
 
@@ -239,6 +239,112 @@ class TechnicalAnalyzer(BaseAnalyzer):
         factors.append(AnalysisFactor(
             "52-Week Position", f"{range_pos*100:.0f}% (${low_52w:.2f}-${high_52w:.2f})",
             0, f"Trading at {range_pos*100:.0f}% of 52-week range"))
+
+        # --- MONEY FLOW INDEX (MFI) ---
+        if len(close) >= 14:
+            try:
+                mfi = MFIIndicator(high, low, close, volume, window=14).money_flow_index()
+                if not mfi.empty:
+                    mfi_val = mfi.iloc[-1]
+                    if mfi_val < 20:
+                        impact = 10
+                        explanation = f"MFI oversold at {mfi_val:.1f} (money flowing in)"
+                    elif mfi_val > 80:
+                        impact = -10
+                        explanation = f"MFI overbought at {mfi_val:.1f} (money flowing out)"
+                    else:
+                        impact = 0
+                        explanation = f"MFI neutral at {mfi_val:.1f}"
+                    score += impact
+                    factors.append(AnalysisFactor("MFI(14)", f"{mfi_val:.1f}", impact, explanation))
+                    confidence_factors.append(0.8)
+            except Exception:
+                pass
+
+        # --- ADX (Average Directional Index) ---
+        if len(close) >= 14:
+            try:
+                adx_ind = ADXIndicator(high, low, close, window=14)
+                adx_val = adx_ind.adx().iloc[-1]
+                adx_pos = adx_ind.adx_pos().iloc[-1]
+                adx_neg = adx_ind.adx_neg().iloc[-1]
+                if adx_val > 25:
+                    # Strong trend — direction from +DI vs -DI
+                    if adx_pos > adx_neg:
+                        impact = 8
+                        explanation = f"Strong uptrend (ADX={adx_val:.0f}, +DI > -DI)"
+                    else:
+                        impact = -8
+                        explanation = f"Strong downtrend (ADX={adx_val:.0f}, -DI > +DI)"
+                else:
+                    impact = 0
+                    explanation = f"Weak/no trend (ADX={adx_val:.0f})"
+                score += impact
+                factors.append(AnalysisFactor("ADX", f"{adx_val:.0f}", impact, explanation))
+            except Exception:
+                pass
+
+        # --- ICHIMOKU CLOUD ---
+        if len(close) >= 52:
+            try:
+                ichi = IchimokuIndicator(high, low, window1=9, window2=26, window3=52)
+                span_a = ichi.ichimoku_a().iloc[-1]
+                span_b = ichi.ichimoku_b().iloc[-1]
+                if current_price > max(span_a, span_b):
+                    impact = 10
+                    explanation = f"Price above Ichimoku Cloud (bullish, cloud: {min(span_a, span_b):.2f}-{max(span_a, span_b):.2f})"
+                elif current_price < min(span_a, span_b):
+                    impact = -10
+                    explanation = f"Price below Ichimoku Cloud (bearish, cloud: {min(span_a, span_b):.2f}-{max(span_a, span_b):.2f})"
+                else:
+                    impact = 0
+                    explanation = f"Price inside Ichimoku Cloud (consolidation)"
+                score += impact
+                factors.append(AnalysisFactor("Ichimoku", f"${current_price:.2f}", impact, explanation))
+                confidence_factors.append(0.85)
+            except Exception:
+                pass
+
+        # --- RSI DIVERGENCE ---
+        if not rsi.empty and len(rsi) >= 20:
+            try:
+                rsi_20 = rsi.iloc[-20:]
+                price_20 = close.iloc[-20:]
+                price_direction = 1 if price_20.iloc[-1] > price_20.iloc[0] else -1
+                rsi_direction = 1 if rsi_20.iloc[-1] > rsi_20.iloc[0] else -1
+                if price_direction != rsi_direction:
+                    if price_direction > 0 and rsi_direction < 0:
+                        impact = -8
+                        explanation = "Bearish RSI divergence: price rising but RSI falling"
+                    else:
+                        impact = 8
+                        explanation = "Bullish RSI divergence: price falling but RSI rising"
+                    score += impact
+                    factors.append(AnalysisFactor("RSI Divergence", "Detected", impact, explanation))
+            except Exception:
+                pass
+
+        # --- RELATIVE STRENGTH VS SPY ---
+        try:
+            spy = yf.Ticker("SPY").history(period="3mo")
+            if not spy.empty and len(spy) >= 20:
+                spy_close = spy["Close"]
+                stock_ret_20 = (close.iloc[-1] / close.iloc[-20] - 1) * 100
+                spy_ret_20 = (spy_close.iloc[-1] / spy_close.iloc[-20] - 1) * 100
+                rel_strength = stock_ret_20 - spy_ret_20
+                if rel_strength > 5:
+                    impact = 8
+                    explanation = f"Outperforming SPY by {rel_strength:+.1f}% over 20 days"
+                elif rel_strength < -5:
+                    impact = -8
+                    explanation = f"Underperforming SPY by {rel_strength:+.1f}% over 20 days"
+                else:
+                    impact = 0
+                    explanation = f"Tracking SPY ({rel_strength:+.1f}% relative over 20 days)"
+                score += impact
+                factors.append(AnalysisFactor("Rel. Strength vs SPY", f"{rel_strength:+.1f}%", impact, explanation))
+        except Exception:
+            pass
 
         # Calculate confidence
         if confidence_factors:

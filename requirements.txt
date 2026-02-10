@@ -30,4 +30,16 @@ tqdm>=4.66.0
 pytest>=7.4.0
 pytest-mock>=3.12.0
 
-# Utilities
+# Dashboard
+streamlit>=1.30.0
+plotly>=5.18.0
+streamlit-autorefresh>=1.0.1
+
+# Scientific Computing
+scipy>=1.11.0
+
+# NLP
+nltk>=3.8.1
+
+# Auth (Robinhood MFA)
+pyotp>=2.9.0

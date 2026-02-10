@@ -4,6 +4,7 @@ import json
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
 
 from database.connection import get_connection
 from dashboard.components.charts import create_candlestick_chart, create_radar_chart
@@ -125,7 +126,48 @@ def render():
                 sma_50 = [sum(closes[max(0, i - 50):i]) / min(i, 50) for i in range(1, len(closes) + 1)] if len(closes) >= 50 else None
                 sma_200 = [sum(closes[max(0, i - 200):i]) / min(i, 200) for i in range(1, len(closes) + 1)] if len(closes) >= 200 else None
 
+                # Build buy/sell signal annotations from past decisions
+                buy_signals = []
+                sell_signals = []
+                try:
+                    past_decisions = list(db.execute(
+                        """SELECT action, composite_score, decided_at
+                           FROM decisions WHERE ticker = ?
+                           ORDER BY decided_at DESC LIMIT 50""",
+                        (ticker,),
+                    ))
+                    for dec in past_decisions:
+                        date_str = dec["decided_at"][:10]
+                        matching = [p for p in prices if p["date"] == date_str]
+                        if matching:
+                            p = matching[0]
+                            if dec["action"] in ("BUY", "STRONG_BUY"):
+                                buy_signals.append({"date": date_str, "price": p["low"] * 0.98})
+                            elif dec["action"] in ("SELL", "STRONG_SELL"):
+                                sell_signals.append({"date": date_str, "price": p["high"] * 1.02})
+                except Exception:
+                    pass
+
                 fig = create_candlestick_chart(prices, ticker, sma_50=sma_50, sma_200=sma_200)
+
+                # Overlay buy/sell signals
+                if buy_signals:
+                    fig.add_trace(go.Scatter(
+                        x=[s["date"] for s in buy_signals],
+                        y=[s["price"] for s in buy_signals],
+                        mode="markers",
+                        marker=dict(symbol="triangle-up", size=12, color="lime"),
+                        name="Buy Signal",
+                    ))
+                if sell_signals:
+                    fig.add_trace(go.Scatter(
+                        x=[s["date"] for s in sell_signals],
+                        y=[s["price"] for s in sell_signals],
+                        mode="markers",
+                        marker=dict(symbol="triangle-down", size=12, color="red"),
+                        name="Sell Signal",
+                    ))
+
                 st.plotly_chart(fig, width="stretch")
         except Exception as e:
             st.warning(f"Could not load price chart: {e}")
@@ -139,6 +181,19 @@ def render():
         if analyzer_scores:
             fig = create_radar_chart(analyzer_scores)
             st.plotly_chart(fig, width="stretch")
+
+        # Indicator agreement summary
+        if analyzer_scores:
+            bullish = sum(1 for s in analyzer_scores.values() if s > 10)
+            bearish = sum(1 for s in analyzer_scores.values() if s < -10)
+            total = len(analyzer_scores)
+            neutral_count = total - bullish - bearish
+            if bullish > bearish:
+                st.success(f"{bullish}/{total} indicators bullish, {bearish} bearish, {neutral_count} neutral")
+            elif bearish > bullish:
+                st.error(f"{bearish}/{total} indicators bearish, {bullish} bullish, {neutral_count} neutral")
+            else:
+                st.info(f"Mixed signals: {bullish} bullish, {bearish} bearish, {neutral_count} neutral")
 
     st.divider()
 
@@ -181,27 +236,26 @@ def render():
     scenarios = extended.get("scenarios", {})
     if scenarios and scenarios.get("base_price"):
         st.divider()
-        st.subheader("Scenario Analysis (12-month)")
-        teach_if_enabled("scenario_analysis")
         current = targets.get("current_price", 0) if targets else 0
+        with st.expander("Scenario Analysis (12-month)", expanded=True):
+            teach_if_enabled("scenario_analysis")
+            scenario_data = []
+            for case, color in [("bull", "green"), ("base", "gray"), ("bear", "red")]:
+                price = scenarios.get(f"{case}_price")
+                prob = scenarios.get(f"{case}_probability", 0)
+                reasoning = scenarios.get(f"{case}_reasoning", "")
+                if price:
+                    upside = ((price / current) - 1) * 100 if current else 0
+                    scenario_data.append({
+                        "Scenario": case.title(),
+                        "Price": f"${price:,.2f}",
+                        "Probability": f"{prob:.0%}",
+                        "Return": f"{upside:+.1f}%",
+                        "Reasoning": reasoning,
+                    })
 
-        scenario_data = []
-        for case, color in [("bull", "green"), ("base", "gray"), ("bear", "red")]:
-            price = scenarios.get(f"{case}_price")
-            prob = scenarios.get(f"{case}_probability", 0)
-            reasoning = scenarios.get(f"{case}_reasoning", "")
-            if price:
-                upside = ((price / current) - 1) * 100 if current else 0
-                scenario_data.append({
-                    "Scenario": case.title(),
-                    "Price": f"${price:,.2f}",
-                    "Probability": f"{prob:.0%}",
-                    "Return": f"{upside:+.1f}%",
-                    "Reasoning": reasoning[:60] + "..." if len(reasoning) > 60 else reasoning,
-                })
-
-        if scenario_data:
-            st.dataframe(pd.DataFrame(scenario_data), width="stretch", hide_index=True)
+            if scenario_data:
+                st.dataframe(pd.DataFrame(scenario_data), width="stretch", hide_index=True)
 
     st.divider()
 
@@ -220,14 +274,14 @@ def render():
     peers = extended.get("peer_comparison", [])
     if peers:
         st.divider()
-        st.subheader("Peer Comparison")
-        peer_df = pd.DataFrame([{
-            "Metric": p.get("metric", ""),
-            "Value": p.get("value", "N/A"),
-            "Sector Avg": p.get("sector_avg", "N/A"),
-            "vs Sector": "Better" if p.get("better_than_sector") else "Worse",
-        } for p in peers])
-        st.dataframe(peer_df, width="stretch", hide_index=True)
+        with st.expander("Peer Comparison", expanded=True):
+            peer_df = pd.DataFrame([{
+                "Metric": p.get("metric", ""),
+                "Value": p.get("value", "N/A"),
+                "Sector Avg": p.get("sector_avg", "N/A"),
+                "vs Sector": "Better" if p.get("better_than_sector") else "Worse",
+            } for p in peers])
+            st.dataframe(peer_df, width="stretch", hide_index=True)
 
     # === BULL / BEAR CASE ===
     if decision and (decision.get("bull_case") or decision.get("bear_case")):

@@ -1,4 +1,5 @@
-"""Sentiment analysis: NLP on news headlines, volume anomaly, trend detection."""
+"""Sentiment analysis: VADER NLP with financial lexicon overlay,
+material event detection, credibility weighting, and trend tracking."""
 
 import logging
 import re
@@ -9,7 +10,7 @@ from database.models import NewsDAO
 
 logger = logging.getLogger("stock_model.analysis.sentiment")
 
-# Material event keywords that signal significant news
+# Material event keywords that signal significant news (use word boundaries)
 MATERIAL_KEYWORDS = {
     "positive": [
         "FDA approval", "FDA approved", "earnings beat", "revenue beat",
@@ -17,6 +18,7 @@ MATERIAL_KEYWORDS = {
         "partnership", "acquisition complete", "dividend increase",
         "stock split", "buyback", "share repurchase", "record revenue",
         "breakthrough", "patent granted", "expansion", "new contract",
+        "beat estimates", "strong quarter", "profit surge",
     ],
     "negative": [
         "FDA reject", "earnings miss", "revenue miss", "downgrade",
@@ -24,17 +26,95 @@ MATERIAL_KEYWORDS = {
         "investigation", "SEC investigation", "data breach", "recall",
         "bankruptcy", "layoffs", "restructuring", "delisted",
         "fraud", "accounting irregularity", "default", "missed payment",
+        "missed earnings", "profit warning", "going concern",
     ],
 }
 
+# Pre-compile word-boundary patterns for material events
+_MATERIAL_PATTERNS = {
+    polarity: [re.compile(r"\b" + re.escape(kw.lower()) + r"\b") for kw in kws]
+    for polarity, kws in MATERIAL_KEYWORDS.items()
+}
+
+# Financial-specific VADER lexicon overlay
+# These augment VADER's default lexicon with finance-domain terms
+FINANCIAL_LEXICON = {
+    # Positive
+    "beat estimates": 0.8,
+    "beat expectations": 0.8,
+    "outperform": 0.6,
+    "strong buy": 0.9,
+    "upgrade": 0.7,
+    "upgraded": 0.7,
+    "raised guidance": 0.8,
+    "raised outlook": 0.7,
+    "dividend increase": 0.6,
+    "buyback": 0.5,
+    "share repurchase": 0.5,
+    "record revenue": 0.8,
+    "record earnings": 0.8,
+    "all-time high": 0.5,
+    "breakout": 0.5,
+    "fda approved": 0.9,
+    "fda approval": 0.9,
+    "patent granted": 0.6,
+    "profit surge": 0.7,
+    "strong quarter": 0.6,
+    "beat consensus": 0.7,
+    "accretive": 0.5,
+    "bullish": 0.6,
+    "outperformance": 0.5,
+    # Negative
+    "missed earnings": -0.8,
+    "missed estimates": -0.8,
+    "miss expectations": -0.7,
+    "underperform": -0.6,
+    "downgrade": -0.7,
+    "downgraded": -0.7,
+    "lowered guidance": -0.8,
+    "cut outlook": -0.7,
+    "profit warning": -0.8,
+    "going concern": -0.9,
+    "lawsuit filed": -0.6,
+    "sec investigation": -0.8,
+    "data breach": -0.7,
+    "product recall": -0.7,
+    "bankruptcy": -0.9,
+    "restructuring": -0.4,
+    "layoffs": -0.5,
+    "accounting irregularity": -0.8,
+    "bearish": -0.6,
+    "fraud": -0.9,
+    "delisted": -0.9,
+}
+
+
+def _get_vader():
+    """Lazy-init VADER with financial lexicon overlay."""
+    try:
+        import nltk
+        from nltk.sentiment.vader import SentimentIntensityAnalyzer
+        try:
+            nltk.data.find("sentiment/vader_lexicon.zip")
+        except LookupError:
+            nltk.download("vader_lexicon", quiet=True)
+        sia = SentimentIntensityAnalyzer()
+        # Inject financial terms
+        sia.lexicon.update(FINANCIAL_LEXICON)
+        return sia
+    except ImportError:
+        logger.warning("nltk not installed — falling back to keyword sentiment")
+        return None
+
 
 class SentimentAnalyzer(BaseAnalyzer):
-    """Analyzes news sentiment using TextBlob NLP and credibility weighting."""
+    """Analyzes news sentiment using VADER NLP with financial lexicon overlay."""
 
     name = "sentiment"
 
     def __init__(self):
         self.news_dao = NewsDAO()
+        self._vader = _get_vader()
 
     def analyze(self, ticker: str, data: dict = None) -> AnalysisResult:
         logger.info("Running sentiment analysis for %s", ticker)
@@ -116,7 +196,7 @@ class SentimentAnalyzer(BaseAnalyzer):
         score += impact
         factors.append(AnalysisFactor("Sentiment Trend", f"{trend:+.3f}", impact, explanation))
 
-        # Material event detection
+        # Material event detection (with word boundaries)
         material = self._detect_material_events(articles)
         if material["positive"]:
             impact = 15
@@ -138,11 +218,8 @@ class SentimentAnalyzer(BaseAnalyzer):
         return self._make_result(score, confidence, factors, summary)
 
     def _analyze_sentiment(self, articles: list) -> dict:
-        """Run TextBlob NLP on article headlines."""
-        try:
-            from textblob import TextBlob
-        except ImportError:
-            logger.warning("TextBlob not installed, using keyword-based sentiment")
+        """Run VADER NLP on article headlines with financial lexicon."""
+        if not self._vader:
             return self._keyword_sentiment(articles)
 
         weighted_total = 0
@@ -151,18 +228,24 @@ class SentimentAnalyzer(BaseAnalyzer):
         tier3_scores = []
 
         for article in articles:
-            text = f"{article['title']} {article['summary'] or ''}"
-            blob = TextBlob(text)
-            polarity = blob.sentiment.polarity  # -1 to 1
+            text = f"{article['title']} {article.get('summary') or ''}"
+
+            # VADER compound score (-1 to 1)
+            scores = self._vader.polarity_scores(text)
+            compound = scores["compound"]
+
+            # Skip purely factual/neutral articles (very low subjectivity)
+            if abs(compound) < 0.02:
+                continue
 
             credibility = article.get("credibility_weight", 0.7) or 0.7
-            weighted_total += polarity * credibility
+            weighted_total += compound * credibility
             weight_sum += credibility
 
             if credibility >= 1.0:
-                tier1_scores.append(polarity)
+                tier1_scores.append(compound)
             elif credibility <= 0.7:
-                tier3_scores.append(polarity)
+                tier3_scores.append(compound)
 
         return {
             "weighted_avg": weighted_total / weight_sum if weight_sum > 0 else 0,
@@ -172,13 +255,13 @@ class SentimentAnalyzer(BaseAnalyzer):
         }
 
     def _keyword_sentiment(self, articles: list) -> dict:
-        """Fallback keyword-based sentiment when TextBlob isn't available."""
+        """Fallback keyword-based sentiment when VADER isn't available."""
         positive_words = {"growth", "profit", "beat", "upgrade", "bullish", "strong", "surge", "gain", "rally", "record"}
         negative_words = {"loss", "miss", "downgrade", "bearish", "weak", "decline", "fall", "crash", "risk", "concern"}
 
         total_score = 0
         for article in articles:
-            text = (article["title"] + " " + (article["summary"] or "")).lower()
+            text = (article["title"] + " " + (article.get("summary") or "")).lower()
             pos = sum(1 for w in positive_words if w in text)
             neg = sum(1 for w in negative_words if w in text)
             total_score += (pos - neg) * (article.get("credibility_weight", 0.7) or 0.7)
@@ -188,7 +271,6 @@ class SentimentAnalyzer(BaseAnalyzer):
 
     def _assess_news_volume(self, articles: list) -> float:
         """Assess if news volume is unusual (returns ratio vs expected)."""
-        # Simple: compare last 7 days vs prior 23 days
         now = datetime.now()
         week_ago = now - timedelta(days=7)
 
@@ -210,11 +292,6 @@ class SentimentAnalyzer(BaseAnalyzer):
 
     def _analyze_trend(self, articles: list) -> float:
         """Compare recent sentiment vs older sentiment for trend detection."""
-        try:
-            from textblob import TextBlob
-        except ImportError:
-            return 0.0
-
         now = datetime.now()
         two_weeks_ago = now - timedelta(days=14)
 
@@ -223,7 +300,15 @@ class SentimentAnalyzer(BaseAnalyzer):
 
         for a in articles:
             text = a["title"]
-            polarity = TextBlob(text).sentiment.polarity
+            if self._vader:
+                polarity = self._vader.polarity_scores(text)["compound"]
+            else:
+                # Simple keyword fallback
+                text_lower = text.lower()
+                pos = sum(1 for w in ("growth", "profit", "beat", "strong", "surge") if w in text_lower)
+                neg = sum(1 for w in ("loss", "miss", "weak", "decline", "crash") if w in text_lower)
+                polarity = (pos - neg) / max(pos + neg, 1)
+
             pub = a.get("published_at", "")
             try:
                 pub_dt = datetime.fromisoformat(pub.replace("Z", "+00:00")) if pub else now
@@ -240,21 +325,18 @@ class SentimentAnalyzer(BaseAnalyzer):
         return recent_avg - older_avg
 
     def _detect_material_events(self, articles: list) -> dict:
-        """Detect material events from article headlines."""
-        found = {"positive": [], "negative": []}
+        """Detect material events using word-boundary regex patterns."""
+        found = {"positive": set(), "negative": set()}
 
         for article in articles:
-            text = (article["title"] + " " + (article["summary"] or "")).lower()
-            for keyword in MATERIAL_KEYWORDS["positive"]:
-                if keyword.lower() in text:
-                    found["positive"].append(keyword)
+            text = (article["title"] + " " + (article.get("summary") or "")).lower()
+            for pattern, keyword in zip(_MATERIAL_PATTERNS["positive"], MATERIAL_KEYWORDS["positive"]):
+                if pattern.search(text):
+                    found["positive"].add(keyword)
                     break
-            for keyword in MATERIAL_KEYWORDS["negative"]:
-                if keyword.lower() in text:
-                    found["negative"].append(keyword)
+            for pattern, keyword in zip(_MATERIAL_PATTERNS["negative"], MATERIAL_KEYWORDS["negative"]):
+                if pattern.search(text):
+                    found["negative"].add(keyword)
                     break
 
-        # Deduplicate
-        found["positive"] = list(set(found["positive"]))
-        found["negative"] = list(set(found["negative"]))
-        return found
+        return {"positive": list(found["positive"]), "negative": list(found["negative"])}

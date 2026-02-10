@@ -18,6 +18,7 @@ from database.models import AnalysisResultDAO, DecisionDAO, StockDAO
 from database.connection import get_connection
 from utils.console import header, separator, ok, fail, neutral
 from utils.helpers import format_pct, format_currency, score_to_signal
+from utils.validators import guard_nan
 
 logger = logging.getLogger("stock_model.engine")
 
@@ -259,18 +260,23 @@ class DecisionEngine:
         weight_total = 0.0
 
         for name, result in results.items():
+            score = guard_nan(result.score, 0)
+            conf = guard_nan(result.confidence, 0)
+            if score == 0 and result.score != 0:
+                logger.warning("Skipping %s: NaN/inf score", name)
+                continue
             weight = self.weights.get(name, 0.05)
-            adjusted_weight = weight * result.confidence
-            weighted_sum += result.score * adjusted_weight
+            adjusted_weight = weight * conf
+            weighted_sum += score * adjusted_weight
             weight_total += adjusted_weight
 
         if weight_total == 0:
             return 0.0, 0.0
 
         composite = weighted_sum / weight_total
-        avg_confidence = sum(r.confidence for r in results.values()) / len(results)
+        avg_confidence = sum(guard_nan(r.confidence, 0) for r in results.values()) / len(results)
 
-        return round(composite, 2), round(avg_confidence, 3)
+        return round(guard_nan(composite), 2), round(guard_nan(avg_confidence), 3)
 
     def _score_to_action(self, score: float, confidence: float) -> str:
         if confidence < 0.3:
@@ -311,14 +317,18 @@ class DecisionEngine:
             weight_total = 0.0
 
             for name, result in results.items():
+                score = guard_nan(result.score, 0)
+                conf = guard_nan(result.confidence, 0)
+                if score == 0 and result.score != 0:
+                    continue  # skip NaN results
                 base_weight = self.weights.get(name, 0.05)
                 multiplier = adjustments.get(name, 1.0)
-                adjusted_weight = base_weight * multiplier * result.confidence
-                weighted_sum += result.score * adjusted_weight
+                adjusted_weight = base_weight * multiplier * conf
+                weighted_sum += score * adjusted_weight
                 weight_total += adjusted_weight
 
             if weight_total > 0:
-                horizon_score = weighted_sum / weight_total
+                horizon_score = guard_nan(weighted_sum / weight_total)
             else:
                 horizon_score = composite_score
 
@@ -328,7 +338,7 @@ class DecisionEngine:
                 horizon=horizon,
                 action=action,
                 score=round(horizon_score, 2),
-                confidence=round(confidence, 3),
+                confidence=round(guard_nan(confidence), 3),
             ))
 
         return horizons
@@ -458,12 +468,12 @@ class DecisionEngine:
             base_reasoning = "Current trajectory maintained with normal volatility"
 
             return ScenarioAnalysis(
-                bull_price=bull_price,
-                bull_probability=bull_prob,
-                base_price=base_price,
-                base_probability=base_prob,
-                bear_price=bear_price,
-                bear_probability=bear_prob,
+                bull_price=guard_nan(bull_price),
+                bull_probability=guard_nan(bull_prob, 0.30),
+                base_price=guard_nan(base_price),
+                base_probability=guard_nan(base_prob, 0.50),
+                bear_price=guard_nan(bear_price),
+                bear_probability=guard_nan(bear_prob, 0.20),
                 bull_reasoning=bull_reasoning,
                 base_reasoning=base_reasoning,
                 bear_reasoning=bear_reasoning,
@@ -495,6 +505,13 @@ class DecisionEngine:
             elif agreement <= 0.3:
                 conviction -= 15
 
+            # Multi-analyzer directional agreement boost (>3 agree = strong signal)
+            dominant_count = max(bullish, bearish)
+            if dominant_count >= 4:
+                conviction += 15
+            elif dominant_count >= 3:
+                conviction += 8
+
         # High individual confidences boost
         high_conf = sum(1 for r in results.values() if r.confidence > 0.7)
         low_conf = sum(1 for r in results.values() if r.confidence < 0.3)
@@ -517,11 +534,20 @@ class DecisionEngine:
 
         # Historical accuracy for this stock
         try:
+            # Use the ticker from the first result's analysis, not analyzer name
+            ticker_for_accuracy = ""
+            try:
+                ticker_for_accuracy = self.db.execute_one(
+                    "SELECT ticker FROM decisions ORDER BY decided_at DESC LIMIT 1"
+                )
+                ticker_for_accuracy = ticker_for_accuracy["ticker"] if ticker_for_accuracy else ""
+            except Exception:
+                pass
             accuracy = self.db.execute_one(
                 """SELECT AVG(CASE WHEN action_was_correct = 1 THEN 1.0 ELSE 0.0 END) as accuracy
                    FROM decision_outcomes
                    WHERE ticker = ? AND action_was_correct IS NOT NULL""",
-                (results and list(results.keys())[0] if results else "",),
+                (ticker_for_accuracy,),
             )
             if accuracy and accuracy["accuracy"] is not None:
                 hist_acc = accuracy["accuracy"]

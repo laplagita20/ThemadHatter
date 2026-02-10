@@ -1,12 +1,14 @@
 """Yahoo Finance collector: prices, fundamentals, financials."""
 
 import logging
+import math
 import json
 import yfinance as yf
 import pandas as pd
 
 from collectors.base_collector import BaseCollector
 from database.models import PriceDAO, FundamentalsDAO, StockDAO, InsiderTradeDAO
+from utils.validators import validate_price
 
 logger = logging.getLogger("stock_model.collectors.yahoo")
 
@@ -69,16 +71,23 @@ class YahooFinanceCollector(BaseCollector):
         if prices is not None and not (isinstance(prices, pd.DataFrame) and prices.empty):
             if isinstance(prices, pd.DataFrame):
                 rows = []
+                skipped = 0
                 for date, row in prices.iterrows():
+                    close_v = validate_price(row.get("Close", 0))
+                    if close_v is None:
+                        skipped += 1
+                        continue
                     rows.append({
                         "date": date.strftime("%Y-%m-%d"),
-                        "open": float(row.get("Open", 0)),
-                        "high": float(row.get("High", 0)),
-                        "low": float(row.get("Low", 0)),
-                        "close": float(row.get("Close", 0)),
-                        "volume": int(row.get("Volume", 0)),
-                        "adj_close": float(row.get("Close", 0)),
+                        "open": validate_price(row.get("Open", 0)) or 0,
+                        "high": validate_price(row.get("High", 0)) or 0,
+                        "low": validate_price(row.get("Low", 0)) or 0,
+                        "close": close_v,
+                        "volume": int(row.get("Volume", 0)) if not pd.isna(row.get("Volume", 0)) else 0,
+                        "adj_close": close_v,
                     })
+                if skipped:
+                    logger.warning("Skipped %d invalid price rows for %s", skipped, ticker)
                 if rows:
                     self.price_dao.upsert_many(ticker, rows)
                     logger.info("Stored %d price records for %s", len(rows), ticker)
@@ -93,29 +102,39 @@ class YahooFinanceCollector(BaseCollector):
                 market_cap=info.get("marketCap"),
             )
 
+            def _finite(v):
+                """Return v if finite, else None."""
+                if v is None:
+                    return None
+                try:
+                    f = float(v)
+                    return f if math.isfinite(f) else None
+                except (TypeError, ValueError):
+                    return None
+
             self.fund_dao.insert(ticker, {
-                "pe_ratio": info.get("trailingPE"),
-                "forward_pe": info.get("forwardPE"),
-                "pb_ratio": info.get("priceToBook"),
-                "ps_ratio": info.get("priceToSalesTrailing12Months"),
-                "ev_ebitda": info.get("enterpriseToEbitda"),
-                "peg_ratio": info.get("pegRatio"),
-                "profit_margin": info.get("profitMargins"),
-                "operating_margin": info.get("operatingMargins"),
-                "gross_margin": info.get("grossMargins"),
-                "roe": info.get("returnOnEquity"),
-                "roa": info.get("returnOnAssets"),
+                "pe_ratio": _finite(info.get("trailingPE")),
+                "forward_pe": _finite(info.get("forwardPE")),
+                "pb_ratio": _finite(info.get("priceToBook")),
+                "ps_ratio": _finite(info.get("priceToSalesTrailing12Months")),
+                "ev_ebitda": _finite(info.get("enterpriseToEbitda")),
+                "peg_ratio": _finite(info.get("pegRatio")),
+                "profit_margin": _finite(info.get("profitMargins")),
+                "operating_margin": _finite(info.get("operatingMargins")),
+                "gross_margin": _finite(info.get("grossMargins")),
+                "roe": _finite(info.get("returnOnEquity")),
+                "roa": _finite(info.get("returnOnAssets")),
                 "roic": None,
-                "revenue_growth": info.get("revenueGrowth"),
-                "earnings_growth": info.get("earningsGrowth"),
-                "debt_to_equity": info.get("debtToEquity"),
-                "current_ratio": info.get("currentRatio"),
-                "quick_ratio": info.get("quickRatio"),
-                "free_cash_flow": info.get("freeCashflow"),
-                "dividend_yield": info.get("dividendYield"),
-                "beta": info.get("beta"),
-                "market_cap": info.get("marketCap"),
-                "enterprise_value": info.get("enterpriseValue"),
+                "revenue_growth": _finite(info.get("revenueGrowth")),
+                "earnings_growth": _finite(info.get("earningsGrowth")),
+                "debt_to_equity": _finite(info.get("debtToEquity")),
+                "current_ratio": _finite(info.get("currentRatio")),
+                "quick_ratio": _finite(info.get("quickRatio")),
+                "free_cash_flow": _finite(info.get("freeCashflow")),
+                "dividend_yield": _finite(info.get("dividendYield")),
+                "beta": _finite(info.get("beta")),
+                "market_cap": _finite(info.get("marketCap")),
+                "enterprise_value": _finite(info.get("enterpriseValue")),
                 "raw": info,
             })
             logger.info("Stored fundamentals for %s", ticker)

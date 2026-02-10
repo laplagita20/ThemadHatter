@@ -153,14 +153,21 @@ class NewsCollector(BaseCollector):
             if not published:
                 published = datetime.now(timezone.utc).isoformat()
 
+            url = entry.get("link", "")
+            # Basic URL validation
+            if url and not url.startswith(("http://", "https://")):
+                url = ""
+            # Clamp credibility to [0, 1]
+            cred = max(0.0, min(1.0, config.get("weight", 0.7)))
+
             articles.append({
                 "title": title[:500],
                 "summary": summary[:1000] if summary else None,
                 "source": source_name,
-                "url": entry.get("link", ""),
+                "url": url,
                 "published_at": published,
                 "ticker": ticker,
-                "credibility_weight": config["weight"],
+                "credibility_weight": cred,
             })
 
         # Cache for 30 min

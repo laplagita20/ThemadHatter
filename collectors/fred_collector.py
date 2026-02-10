@@ -1,6 +1,7 @@
 """FRED collector: Federal Reserve Economic Data - macro indicators."""
 
 import logging
+import math
 from datetime import datetime, timedelta
 
 from collectors.base_collector import BaseCollector
@@ -82,9 +83,12 @@ class FREDCollector(BaseCollector):
                     for date, value in data.items():
                         if value is not None and str(value) != "." and str(value) != "nan":
                             try:
+                                fval = float(value)
+                                if not math.isfinite(fval):
+                                    continue
                                 records.append({
                                     "date": date.strftime("%Y-%m-%d"),
-                                    "value": float(value),
+                                    "value": fval,
                                 })
                             except (ValueError, TypeError):
                                 continue

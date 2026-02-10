@@ -13,9 +13,11 @@ from utils.console import header, separator
 
 def cmd_analyze(args):
     """Analyze a single stock."""
+    from utils.validators import validate_ticker
     from engine.decision_engine import DecisionEngine
+    ticker = validate_ticker(args.ticker)
     engine = DecisionEngine()
-    decision = engine.analyze(args.ticker.upper())
+    decision = engine.analyze(ticker)
     engine.print_decision(decision)
 
 
@@ -67,7 +69,11 @@ def cmd_rebalance(args):
 def cmd_collect(args):
     """Run data collection for a specific source or all."""
     from collectors.scheduler import run_collection
-    run_collection(source=args.source, ticker=args.ticker)
+    ticker = args.ticker
+    if ticker:
+        from utils.validators import validate_ticker
+        ticker = validate_ticker(ticker)
+    run_collection(source=args.source, ticker=ticker)
 
 
 def cmd_track_outcomes(args):
@@ -118,12 +124,13 @@ def cmd_dashboard(args):
 def cmd_watchlist(args):
     """Manage the stock watchlist."""
     from database.models import StockDAO
+    from utils.validators import validate_ticker
     dao = StockDAO()
 
     if args.add:
         import yfinance as yf
         for ticker in args.add:
-            ticker = ticker.upper()
+            ticker = validate_ticker(ticker)
             stock = yf.Ticker(ticker)
             info = stock.info
             dao.upsert(
@@ -136,7 +143,7 @@ def cmd_watchlist(args):
             print(f"Added {ticker} ({info.get('longName', 'Unknown')})")
     elif args.remove:
         for ticker in args.remove:
-            ticker = ticker.upper()
+            ticker = validate_ticker(ticker)
             db = get_connection()
             db.execute("UPDATE stocks SET is_active = 0 WHERE ticker = ?", (ticker,))
             print(f"Removed {ticker} from watchlist")
