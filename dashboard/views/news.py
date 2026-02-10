@@ -6,7 +6,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 from database.connection import get_connection
-from database.models import StockDAO, NewsDAO
+from database.models import StockDAO, NewsDAO, UserWatchlistDAO
+from dashboard.components.auth import get_current_user_id
 from dashboard.components.teach_me import teach_if_enabled
 
 # Auto-refresh news if older than this many minutes
@@ -206,6 +207,8 @@ def render():
 
     db = get_connection()
     stock_dao = StockDAO()
+    user_id = get_current_user_id()
+    wl_dao = UserWatchlistDAO()
 
     # Controls
     ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 1])
@@ -243,11 +246,14 @@ def render():
     portfolio_tickers = []
     holdings = list(db.execute(
         """SELECT DISTINCT ticker FROM portfolio_holdings
-           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM portfolio_holdings)"""
+           WHERE user_id = ? AND snapshot_date = (
+               SELECT MAX(snapshot_date) FROM portfolio_holdings WHERE user_id = ?
+           )""",
+        (user_id, user_id),
     ))
     portfolio_tickers = [h["ticker"] for h in holdings]
 
-    watchlist_tickers = [s["ticker"] for s in stock_dao.get_watchlist()]
+    watchlist_tickers = wl_dao.get_tickers(user_id)
 
     # Auto-fetch if stale (no button click needed)
     stale = _is_news_stale(db)

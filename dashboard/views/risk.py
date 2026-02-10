@@ -14,7 +14,9 @@ def render():
     """Render the risk dashboard page."""
     st.header("Risk Dashboard")
 
-    rm = RiskManager()
+    from dashboard.components.auth import get_current_user_id
+    user_id = get_current_user_id()
+    rm = RiskManager(user_id=user_id)
 
     # Generate report button
     if st.button("Generate Risk Report", type="primary"):

@@ -37,6 +37,12 @@ settings = get_settings()
 db = get_connection(settings.db_path)
 initialize_database(db)
 
+# Auth gate - must login before accessing anything
+from dashboard.components.auth import login_register_page, logout_button, get_current_user_id
+
+if not login_register_page():
+    st.stop()
+
 # Auto-refresh (optional) - refreshes page every 60s to pick up live price changes
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -56,6 +62,9 @@ if not st.session_state.get("_scheduler_started"):
 
 # Sidebar branding
 mad_hatter_header()
+
+# Logout button + user info
+logout_button()
 
 # Learning Mode toggle
 from dashboard.components.teach_me import teach_me_sidebar
@@ -97,7 +106,7 @@ if st.sidebar.button("Add to Watchlist", key="sidebar_add_btn"):
         if ticker_upper:
             try:
                 import yfinance as yf
-                from database.models import StockDAO
+                from database.models import StockDAO, UserWatchlistDAO
                 stock_dao = StockDAO()
                 stock = yf.Ticker(ticker_upper)
                 info = stock.info
@@ -108,6 +117,8 @@ if st.sidebar.button("Add to Watchlist", key="sidebar_add_btn"):
                     industry=info.get("industry", ""),
                     market_cap=info.get("marketCap"),
                 )
+                user_wl_dao = UserWatchlistDAO()
+                user_wl_dao.add(get_current_user_id(), ticker_upper)
                 st.sidebar.success(f"Added {ticker_upper}")
                 st.rerun()
             except Exception as e:
@@ -152,19 +163,24 @@ def _freshness_badge(iso_str: str, fresh_hours: int = 6) -> str:
         return f":red[{iso_str or 'never'}]"
 
 try:
-    stock_count = db.execute_one("SELECT COUNT(*) as c FROM stocks WHERE is_active = 1")
-    if stock_count:
-        st.sidebar.text(f"Watchlist: {stock_count['c']} stocks")
+    _uid = get_current_user_id()
+    from database.models import UserWatchlistDAO as _UWL
+    _wl_count = len(_UWL().get_tickers(_uid)) if _uid else 0
+    st.sidebar.text(f"Watchlist: {_wl_count} stocks")
 
     holding_count = db.execute_one(
         """SELECT COUNT(DISTINCT ticker) as c FROM portfolio_holdings
-           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM portfolio_holdings)"""
+           WHERE user_id = ? AND snapshot_date = (
+               SELECT MAX(snapshot_date) FROM portfolio_holdings WHERE user_id = ?
+           )""",
+        (_uid, _uid),
     )
     if holding_count:
         st.sidebar.text(f"Holdings: {holding_count['c']} positions")
 
     rec_count = db.execute_one(
-        "SELECT COUNT(*) as c FROM recurring_investments WHERE is_active = 1"
+        "SELECT COUNT(*) as c FROM recurring_investments WHERE is_active = 1 AND user_id = ?",
+        (_uid,),
     )
     if rec_count and rec_count["c"] > 0:
         st.sidebar.text(f"DCA Plans: {rec_count['c']} active")

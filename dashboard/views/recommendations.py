@@ -9,7 +9,8 @@ import streamlit as st
 import pandas as pd
 
 from database.connection import get_connection
-from database.models import StockDAO
+from database.models import StockDAO, UserWatchlistDAO
+from dashboard.components.auth import get_current_user_id
 from dashboard.components.teach_me import teach_if_enabled, teach_me
 
 # Curated stock universes for market-wide scanning
@@ -183,6 +184,8 @@ def render():
 
     db = get_connection()
     stock_dao = StockDAO()
+    user_id = get_current_user_id()
+    wl_dao = UserWatchlistDAO()
 
     # Teach Me section at the top
     teach_if_enabled("buy_recommendation")
@@ -221,7 +224,7 @@ def render():
 
     # Determine tickers to scan
     if scan_source == "My Watchlist":
-        tickers_to_scan = [s["ticker"] for s in stock_dao.get_all_active()]
+        tickers_to_scan = wl_dao.get_tickers(user_id)
     elif scan_source == "Custom Tickers":
         tickers_to_scan = custom_tickers
     elif scan_source == "Previously Analyzed":

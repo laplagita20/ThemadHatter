@@ -5,7 +5,8 @@ import pandas as pd
 import yfinance as yf
 
 from database.connection import get_connection
-from database.models import StockDAO
+from database.models import StockDAO, UserWatchlistDAO
+from dashboard.components.auth import get_current_user_id
 
 
 def render():
@@ -14,6 +15,8 @@ def render():
 
     db = get_connection()
     stock_dao = StockDAO()
+    user_id = get_current_user_id()
+    wl_dao = UserWatchlistDAO()
 
     # --- Watchlist Management ---
     with st.expander("Manage Watchlist", expanded=False):
@@ -36,6 +39,7 @@ def render():
                                 industry=info.get("industry", ""),
                                 market_cap=info.get("marketCap"),
                             )
+                            wl_dao.add(user_id, t)
                             st.success(f"Added {t} ({info.get('longName', '')})")
                         except Exception as e:
                             st.error(f"Failed to add {t}: {e}")
@@ -43,18 +47,24 @@ def render():
 
         with col_remove:
             st.markdown("**Remove Tickers**")
-            all_stocks = list(db.execute("SELECT ticker FROM stocks WHERE is_active = 1 ORDER BY ticker"))
-            tickers_to_remove = st.multiselect("Select to remove", [s["ticker"] for s in all_stocks], key="wl_remove")
+            user_tickers = wl_dao.get_tickers(user_id)
+            tickers_to_remove = st.multiselect("Select to remove", user_tickers, key="wl_remove")
             if st.button("Remove Selected", key="wl_remove_btn"):
                 for t in tickers_to_remove:
-                    stock_dao.deactivate(t)
+                    wl_dao.remove(user_id, t)
                 st.success(f"Removed {len(tickers_to_remove)} ticker(s)")
                 st.rerun()
 
-    # Get all stocks with computed scores
-    stocks = list(db.execute(
-        "SELECT ticker, company_name, sector, industry, market_cap FROM stocks WHERE is_active = 1 ORDER BY ticker"
-    ))
+    # Get user's watchlist stocks with details
+    user_tickers = wl_dao.get_tickers(user_id)
+    if user_tickers:
+        placeholders = ",".join("?" for _ in user_tickers)
+        stocks = list(db.execute(
+            f"SELECT ticker, company_name, sector, industry, market_cap FROM stocks WHERE ticker IN ({placeholders}) ORDER BY ticker",
+            tuple(user_tickers),
+        ))
+    else:
+        stocks = []
 
     if not stocks:
         st.warning("No stocks in watchlist. Use 'Manage Watchlist' above to add tickers.")

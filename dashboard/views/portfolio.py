@@ -176,12 +176,12 @@ def _apply_live_prices(holdings: list[dict], live_prices: dict) -> list[dict]:
     return updated
 
 
-def _merge_and_snapshot(portfolio_dao, new_holding: dict):
+def _merge_and_snapshot(portfolio_dao, new_holding: dict, user_id: int = None):
     """Load existing holdings, merge in the new one, and create a fresh snapshot."""
-    existing = list(portfolio_dao.get_latest_holdings())
+    existing = list(portfolio_dao.get_latest_holdings(user_id))
     merged = {h["ticker"]: dict(h) for h in existing}
     merged[new_holding["ticker"]] = new_holding
-    portfolio_dao.snapshot_holdings(list(merged.values()))
+    portfolio_dao.snapshot_holdings(list(merged.values()), user_id)
 
 
 def _fetch_and_build_holding(ticker: str, shares: float, cost_basis: float) -> dict:
@@ -263,13 +263,13 @@ def _parse_broker_csv(csv_text: str, broker: str) -> list[dict]:
     return results
 
 
-def _render_recurring_investments(holdings):
+def _render_recurring_investments(holdings, user_id: int = None):
     """Render the recurring investments management section."""
     st.subheader("Recurring Investments (DCA)")
     teach_if_enabled("recurring_investment")
 
     recurring_dao = RecurringInvestmentDAO()
-    active_plans = list(recurring_dao.get_all_active())
+    active_plans = list(recurring_dao.get_all_active(user_id))
 
     # Show existing plans
     if active_plans:
@@ -333,7 +333,7 @@ def _render_recurring_investments(holdings):
             if st.form_submit_button("Create DCA Plan", type="primary"):
                 if rec_ticker:
                     try:
-                        recurring_dao.create(rec_ticker, rec_amount, rec_frequency, rec_day)
+                        recurring_dao.create(rec_ticker, rec_amount, rec_frequency, rec_day, user_id)
                         st.success(f"Created {rec_frequency} ${rec_amount:.2f} plan for {rec_ticker}")
                         st.rerun()
                     except Exception as e:
@@ -367,6 +367,9 @@ def render():
     """Render the portfolio overview page."""
     st.header("Portfolio Overview")
 
+    from dashboard.components.auth import get_current_user_id
+    user_id = get_current_user_id()
+
     portfolio_dao = PortfolioDAO()
     stock_dao = StockDAO()
     db = get_connection()
@@ -399,7 +402,7 @@ def render():
                         try:
                             holding = _fetch_and_build_holding(ticker_input, shares_input, cost_input)
                             info = holding.pop("_info")
-                            _merge_and_snapshot(portfolio_dao, holding)
+                            _merge_and_snapshot(portfolio_dao, holding, user_id)
                             stock_dao.upsert(
                                 ticker=ticker_input,
                                 company_name=info.get("longName", info.get("shortName", "")),
@@ -447,7 +450,7 @@ def render():
                             try:
                                 holding = _fetch_and_build_holding(row["ticker"], row["shares"], row["cost"])
                                 info = holding.pop("_info")
-                                _merge_and_snapshot(portfolio_dao, holding)
+                                _merge_and_snapshot(portfolio_dao, holding, user_id)
                                 stock_dao.upsert(
                                     ticker=row["ticker"],
                                     company_name=info.get("longName", ""),
@@ -483,7 +486,7 @@ def render():
                                 t, s, c = parts[0].upper(), float(parts[1]), float(parts[2])
                                 holding = _fetch_and_build_holding(t, s, c)
                                 info = holding.pop("_info")
-                                _merge_and_snapshot(portfolio_dao, holding)
+                                _merge_and_snapshot(portfolio_dao, holding, user_id)
                                 stock_dao.upsert(
                                     ticker=t, company_name=info.get("longName", ""),
                                     sector=info.get("sector", ""), industry=info.get("industry", ""),
@@ -495,7 +498,7 @@ def render():
                     st.success(f"Imported {imported} of {len(lines)} positions")
                     st.rerun()
 
-    holdings = list(portfolio_dao.get_latest_holdings())
+    holdings = list(portfolio_dao.get_latest_holdings(user_id))
 
     if not holdings:
         st.info("No holdings yet. Use the form above to add your first position.")
@@ -599,7 +602,7 @@ def render():
         tickers_in_portfolio = [h["ticker"] for h in holdings]
         remove_ticker = st.selectbox("Remove a holding", [""] + tickers_in_portfolio, key="remove_holding")
         if remove_ticker and st.button("Remove", key="remove_btn"):
-            portfolio_dao.delete_holding(remove_ticker)
+            portfolio_dao.delete_holding(remove_ticker, user_id)
             st.success(f"Removed {remove_ticker}")
             st.rerun()
 
@@ -662,7 +665,7 @@ def render():
     st.divider()
 
     # --- Recurring Investments Section ---
-    _render_recurring_investments(holdings)
+    _render_recurring_investments(holdings, user_id)
 
     st.divider()
 
@@ -670,8 +673,9 @@ def render():
     st.subheader("Portfolio Performance")
     snapshots = list(db.execute(
         """SELECT snapshot_date, total_equity FROM portfolio_snapshots
-           WHERE total_equity IS NOT NULL
-           ORDER BY snapshot_date ASC LIMIT 365"""
+           WHERE total_equity IS NOT NULL AND (user_id = ? OR user_id IS NULL)
+           ORDER BY snapshot_date ASC LIMIT 365""",
+        (user_id,),
     ))
 
     if len(snapshots) >= 2:

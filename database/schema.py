@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger("stock_model.schema")
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 TABLES = [
     # --- Phase 1: Foundation ---
@@ -186,7 +186,8 @@ TABLES = [
         unrealized_pl REAL,
         unrealized_pl_pct REAL,
         sector TEXT,
-        snapshot_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        snapshot_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_id INTEGER
     )""",
 
     """CREATE TABLE IF NOT EXISTS portfolio_transactions (
@@ -208,7 +209,8 @@ TABLES = [
         cash REAL,
         total_pl REAL,
         total_pl_pct REAL,
-        num_positions INTEGER
+        num_positions INTEGER,
+        user_id INTEGER
     )""",
 
     # --- Alpha Vantage ---
@@ -297,7 +299,8 @@ TABLES = [
         outcome_1w REAL,
         outcome_1m REAL,
         outcome_3m REAL,
-        outcome_6m REAL
+        outcome_6m REAL,
+        user_id INTEGER
     )""",
 
     """CREATE TABLE IF NOT EXISTS risk_rules (
@@ -417,7 +420,8 @@ TABLES = [
         total_shares_bought REAL DEFAULT 0,
         num_executions INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_id INTEGER
     )""",
 
     """CREATE TABLE IF NOT EXISTS recurring_investment_log (
@@ -427,7 +431,8 @@ TABLES = [
         amount REAL NOT NULL,
         shares_bought REAL,
         price_at_execution REAL,
-        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_id INTEGER
     )""",
 
     # --- Phase 7A: Computed Scores ---
@@ -490,6 +495,24 @@ TABLES = [
         holdings_impact_json TEXT,
         computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
+
+    # --- Phase 11: Multi-User Auth ---
+    """CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_admin INTEGER DEFAULT 0
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS user_watchlist (
+        user_id INTEGER NOT NULL,
+        ticker TEXT NOT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, ticker),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
 ]
 
 INDEXES = [
@@ -519,6 +542,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_hedge_fund_date ON hedge_fund_holdings(report_date)",
     "CREATE INDEX IF NOT EXISTS idx_recurring_inv_ticker ON recurring_investments(ticker)",
     "CREATE INDEX IF NOT EXISTS idx_recurring_inv_log_ticker ON recurring_investment_log(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_user_watchlist_user ON user_watchlist(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_watchlist_ticker ON user_watchlist(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+    "CREATE INDEX IF NOT EXISTS idx_holdings_user ON portfolio_holdings(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_snapshots_user ON portfolio_snapshots(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_recurring_inv_user ON recurring_investments(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_decisions_user ON decisions(user_id)",
 ]
 
 
@@ -542,6 +572,16 @@ def initialize_database(db_connection):
                 conn.execute("ALTER TABLE decisions ADD COLUMN extended_data_json TEXT")
             except Exception:
                 pass  # Column already exists
+
+        if current_v < 4:
+            # Add user_id columns to per-user tables
+            for table in ["portfolio_holdings", "portfolio_snapshots",
+                          "recurring_investments", "recurring_investment_log",
+                          "decisions"]:
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER")
+                except Exception:
+                    pass  # Column already exists
 
         if existing is None or existing["v"] is None or existing["v"] < CURRENT_VERSION:
             conn.execute(

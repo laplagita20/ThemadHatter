@@ -1,12 +1,110 @@
 """Data access objects (DAOs) for database operations."""
 
+import hashlib
 import json
 import logging
+import secrets
 from datetime import datetime
 from database.connection import get_connection
 from utils.validators import validate_ticker, validate_price, validate_amount, guard_nan
 
 logger = logging.getLogger("stock_model.models")
+
+
+class UserDAO:
+    """Data access for user authentication."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def _hash_password(self, password: str, salt: str) -> str:
+        return hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), salt.encode(), 100_000
+        ).hex()
+
+    def create(self, username: str, password: str) -> int:
+        """Create a new user. Returns the user id."""
+        username = username.strip().lower()
+        if not username or len(username) < 3:
+            raise ValueError("Username must be at least 3 characters")
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        if self.exists(username):
+            raise ValueError("Username already taken")
+        salt = secrets.token_hex(16)
+        password_hash = self._hash_password(password, salt)
+        return self.db.execute_insert(
+            "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
+            (username, password_hash, salt),
+        )
+
+    def authenticate(self, username: str, password: str):
+        """Verify credentials. Returns user dict or None."""
+        username = username.strip().lower()
+        user = self.db.execute_one(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        )
+        if not user:
+            return None
+        expected = self._hash_password(password, user["salt"])
+        if expected == user["password_hash"]:
+            return user
+        return None
+
+    def get_by_id(self, user_id: int):
+        return self.db.execute_one("SELECT * FROM users WHERE id = ?", (user_id,))
+
+    def exists(self, username: str) -> bool:
+        username = username.strip().lower()
+        row = self.db.execute_one(
+            "SELECT 1 as x FROM users WHERE username = ?", (username,)
+        )
+        return row is not None
+
+
+class UserWatchlistDAO:
+    """Data access for per-user watchlists."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def add(self, user_id: int, ticker: str):
+        ticker = validate_ticker(ticker)
+        self.db.execute_insert(
+            "INSERT OR IGNORE INTO user_watchlist (user_id, ticker) VALUES (?, ?)",
+            (user_id, ticker),
+        )
+
+    def remove(self, user_id: int, ticker: str):
+        ticker = validate_ticker(ticker)
+        self.db.execute(
+            "DELETE FROM user_watchlist WHERE user_id = ? AND ticker = ?",
+            (user_id, ticker),
+        )
+
+    def get_tickers(self, user_id: int) -> list[str]:
+        rows = self.db.execute(
+            "SELECT ticker FROM user_watchlist WHERE user_id = ? ORDER BY ticker",
+            (user_id,),
+        )
+        return [r["ticker"] for r in rows]
+
+    def get_watchlist(self, user_id: int):
+        return self.db.execute(
+            """SELECT uw.ticker, s.company_name, s.sector
+               FROM user_watchlist uw
+               LEFT JOIN stocks s ON uw.ticker = s.ticker
+               WHERE uw.user_id = ?
+               ORDER BY uw.ticker""",
+            (user_id,),
+        )
+
+    def has_ticker(self, user_id: int, ticker: str) -> bool:
+        row = self.db.execute_one(
+            "SELECT 1 as x FROM user_watchlist WHERE user_id = ? AND ticker = ?",
+            (user_id, ticker),
+        )
+        return row is not None
 
 
 class StockDAO:
@@ -162,14 +260,14 @@ class DecisionDAO:
     def __init__(self, db=None):
         self.db = db or get_connection()
 
-    def insert(self, decision: dict) -> int:
+    def insert(self, decision: dict, user_id: int = None) -> int:
         return self.db.execute_insert(
             """INSERT INTO decisions
                (ticker, action, composite_score, confidence,
                 position_size_pct, stop_loss_pct, target_price, time_horizon,
                 reasoning_json, bull_case, bear_case, risk_warnings,
-                analysis_breakdown_json, extended_data_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                analysis_breakdown_json, extended_data_json, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 decision["ticker"], decision["action"],
                 decision["composite_score"], decision["confidence"],
@@ -183,10 +281,18 @@ class DecisionDAO:
                 decision.get("risk_warnings"),
                 json.dumps(decision.get("analysis_breakdown", {}), default=str),
                 json.dumps(decision.get("extended_data", {}), default=str) if decision.get("extended_data") else None,
+                user_id,
             ),
         )
 
-    def get_latest(self, ticker: str):
+    def get_latest(self, ticker: str, user_id: int = None):
+        if user_id is not None:
+            return self.db.execute_one(
+                """SELECT * FROM decisions
+                   WHERE ticker = ? AND (user_id = ? OR user_id IS NULL)
+                   ORDER BY decided_at DESC LIMIT 1""",
+                (ticker, user_id),
+            )
         return self.db.execute_one(
             "SELECT * FROM decisions WHERE ticker = ? ORDER BY decided_at DESC LIMIT 1",
             (ticker,),
@@ -281,50 +387,65 @@ class PortfolioDAO:
     def __init__(self, db=None):
         self.db = db or get_connection()
 
-    def snapshot_holdings(self, holdings: list[dict]):
+    def snapshot_holdings(self, holdings: list[dict], user_id: int = None):
         now = datetime.now().isoformat()
         for h in holdings:
             h["ticker"] = validate_ticker(h["ticker"])
             self.db.execute_insert(
                 """INSERT INTO portfolio_holdings
                    (ticker, quantity, average_cost, current_price,
-                    market_value, unrealized_pl, unrealized_pl_pct, sector, snapshot_date)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    market_value, unrealized_pl, unrealized_pl_pct, sector, snapshot_date, user_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     h["ticker"], h["quantity"], h.get("average_cost"),
                     h.get("current_price"), h.get("market_value"),
                     h.get("unrealized_pl"), h.get("unrealized_pl_pct"),
-                    h.get("sector"), now,
+                    h.get("sector"), now, user_id,
                 ),
             )
 
-    def get_latest_holdings(self):
+    def get_latest_holdings(self, user_id: int = None):
+        if user_id is not None:
+            return self.db.execute(
+                """SELECT * FROM portfolio_holdings
+                   WHERE user_id = ? AND snapshot_date = (
+                       SELECT MAX(snapshot_date) FROM portfolio_holdings WHERE user_id = ?
+                   ) ORDER BY market_value DESC""",
+                (user_id, user_id),
+            )
         return self.db.execute(
             """SELECT * FROM portfolio_holdings
                WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM portfolio_holdings)
                ORDER BY market_value DESC"""
         )
 
-    def delete_holding(self, ticker: str):
+    def delete_holding(self, ticker: str, user_id: int = None):
         """Delete a holding from the latest snapshot by creating a new snapshot without it."""
-        holdings = list(self.get_latest_holdings())
+        holdings = list(self.get_latest_holdings(user_id))
         holdings = [h for h in holdings if h["ticker"] != ticker]
         if holdings:
-            self.snapshot_holdings(holdings)
+            self.snapshot_holdings(holdings, user_id)
 
-    def get_latest_snapshot_date(self):
-        row = self.db.execute_one(
-            "SELECT MAX(snapshot_date) as max_date FROM portfolio_holdings"
-        )
+    def get_latest_snapshot_date(self, user_id: int = None):
+        if user_id is not None:
+            row = self.db.execute_one(
+                "SELECT MAX(snapshot_date) as max_date FROM portfolio_holdings WHERE user_id = ?",
+                (user_id,),
+            )
+        else:
+            row = self.db.execute_one(
+                "SELECT MAX(snapshot_date) as max_date FROM portfolio_holdings"
+            )
         return row["max_date"] if row else None
 
     def insert_snapshot(self, total_equity: float, cash: float,
-                        total_pl: float, total_pl_pct: float, num_positions: int):
+                        total_pl: float, total_pl_pct: float, num_positions: int,
+                        user_id: int = None):
         self.db.execute_insert(
             """INSERT INTO portfolio_snapshots
-               (total_equity, cash, total_pl, total_pl_pct, num_positions)
-               VALUES (?, ?, ?, ?, ?)""",
-            (total_equity, cash, total_pl, total_pl_pct, num_positions),
+               (total_equity, cash, total_pl, total_pl_pct, num_positions, user_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (total_equity, cash, total_pl, total_pl_pct, num_positions, user_id),
         )
 
 
@@ -529,7 +650,7 @@ class RecurringInvestmentDAO:
         self.db = db or get_connection()
 
     def create(self, ticker: str, amount: float, frequency: str = "monthly",
-               day_of_period: int = 1):
+               day_of_period: int = 1, user_id: int = None):
         """Create a new recurring investment plan."""
         from datetime import date, timedelta
         today = date.today()
@@ -561,18 +682,31 @@ class RecurringInvestmentDAO:
 
         return self.db.execute_insert(
             """INSERT INTO recurring_investments
-               (ticker, amount, frequency, day_of_period, next_investment_date)
-               VALUES (?, ?, ?, ?, ?)""",
-            (ticker, amount, frequency, day_of_period, next_date.isoformat()),
+               (ticker, amount, frequency, day_of_period, next_investment_date, user_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ticker, amount, frequency, day_of_period, next_date.isoformat(), user_id),
         )
 
-    def get_all_active(self):
+    def get_all_active(self, user_id: int = None):
+        if user_id is not None:
+            return self.db.execute(
+                """SELECT * FROM recurring_investments
+                   WHERE is_active = 1 AND user_id = ? ORDER BY ticker""",
+                (user_id,),
+            )
         return self.db.execute(
             """SELECT * FROM recurring_investments
                WHERE is_active = 1 ORDER BY ticker"""
         )
 
-    def get_for_ticker(self, ticker: str):
+    def get_for_ticker(self, ticker: str, user_id: int = None):
+        if user_id is not None:
+            return self.db.execute_one(
+                """SELECT * FROM recurring_investments
+                   WHERE ticker = ? AND is_active = 1 AND user_id = ?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (ticker, user_id),
+            )
         return self.db.execute_one(
             """SELECT * FROM recurring_investments
                WHERE ticker = ? AND is_active = 1
@@ -618,8 +752,17 @@ class RecurringInvestmentDAO:
             (ticker, limit),
         )
 
-    def get_summary(self):
+    def get_summary(self, user_id: int = None):
         """Get a summary of all active recurring investments."""
+        if user_id is not None:
+            return self.db.execute(
+                """SELECT ri.*, s.company_name, s.sector
+                   FROM recurring_investments ri
+                   LEFT JOIN stocks s ON ri.ticker = s.ticker
+                   WHERE ri.is_active = 1 AND ri.user_id = ?
+                   ORDER BY ri.ticker""",
+                (user_id,),
+            )
         return self.db.execute(
             """SELECT ri.*, s.company_name, s.sector
                FROM recurring_investments ri

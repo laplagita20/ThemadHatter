@@ -18,12 +18,17 @@ logger = logging.getLogger("stock_model.engine.risk")
 class RiskManager:
     """Professional-grade portfolio risk management."""
 
-    def __init__(self):
+    def __init__(self, user_id: int = None):
         self.settings = get_settings()
         self.portfolio_dao = PortfolioDAO()
         self.price_dao = PriceDAO()
         self.risk_dao = RiskSimulationDAO()
         self.db = get_connection()
+        self._user_id = user_id
+
+    def _get_holdings(self):
+        """Get holdings for the current user (or all if no user)."""
+        return self.portfolio_dao.get_latest_holdings(self._user_id)
 
     # =========================================================================
     # Original Risk Checks (preserved)
@@ -39,7 +44,7 @@ class RiskManager:
         return {"allowed": True, "adjusted_pct": proposed_pct, "reason": "Within limits"}
 
     def check_sector_concentration(self, sector: str) -> dict:
-        holdings = self.portfolio_dao.get_latest_holdings()
+        holdings = self._get_holdings()
         if not holdings:
             return {"allowed": True, "current_pct": 0, "reason": "No existing holdings"}
 
@@ -63,7 +68,7 @@ class RiskManager:
         return {"allowed": True, "current_pct": sector_pct, "reason": "Within limits"}
 
     def check_diversification(self) -> dict:
-        holdings = self.portfolio_dao.get_latest_holdings()
+        holdings = self._get_holdings()
         if not holdings:
             return {"meets_minimum": False, "num_sectors": 0, "reason": "No holdings"}
 
@@ -93,7 +98,7 @@ class RiskManager:
         }
 
     def get_portfolio_risk_summary(self) -> dict:
-        holdings = self.portfolio_dao.get_latest_holdings()
+        holdings = self._get_holdings()
         if not holdings:
             return {"status": "no_holdings"}
 
@@ -202,7 +207,7 @@ class RiskManager:
         VaR answers: 'What is the maximum loss at X% confidence over Y days?'
         """
         try:
-            holdings = self.portfolio_dao.get_latest_holdings()
+            holdings = self._get_holdings()
             if not holdings:
                 return {"error": "No portfolio holdings"}
 
@@ -304,7 +309,7 @@ class RiskManager:
     def _calculate_var_simple(self, confidence_level: float = 0.95, horizon_days: int = 1) -> dict:
         """Simplified VaR without scipy."""
         try:
-            holdings = self.portfolio_dao.get_latest_holdings()
+            holdings = self._get_holdings()
             if not holdings:
                 return {"error": "No portfolio holdings"}
 
@@ -362,7 +367,7 @@ class RiskManager:
         Returns probability distribution of portfolio values.
         """
         try:
-            holdings = self.portfolio_dao.get_latest_holdings()
+            holdings = self._get_holdings()
             if not holdings:
                 return {"error": "No portfolio holdings"}
 
@@ -494,7 +499,7 @@ class RiskManager:
     def calculate_correlation_matrix(self) -> dict:
         """Calculate pairwise correlations and diversification ratio."""
         try:
-            holdings = self.portfolio_dao.get_latest_holdings()
+            holdings = self._get_holdings()
             if not holdings or len(holdings) < 2:
                 return {"error": "Need at least 2 holdings for correlation analysis"}
 
@@ -600,7 +605,7 @@ class RiskManager:
             {"name": "Energy Collapse", "description": "Oil price crash scenario", "market_shock": -0.50, "sector_filter": ["Energy"]},
         ]
 
-        holdings = self.portfolio_dao.get_latest_holdings()
+        holdings = self._get_holdings()
         if not holdings:
             return [{"error": "No portfolio holdings for stress testing"}]
 
