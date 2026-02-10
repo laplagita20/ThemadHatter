@@ -75,8 +75,20 @@ class Settings:
 _settings: Settings | None = None
 
 
+def _get_secret(key: str, default: str = "") -> str:
+    """Read a secret from Streamlit Cloud secrets or environment variable."""
+    # Streamlit Cloud injects secrets as st.secrets
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 def get_settings() -> Settings:
-    """Load settings from .env and return singleton Settings instance."""
+    """Load settings from Streamlit secrets, .env, or environment."""
     global _settings
     if _settings is not None:
         return _settings
@@ -86,14 +98,14 @@ def get_settings() -> Settings:
     load_dotenv(env_path)
 
     _settings = Settings(
-        fred_api_key=os.getenv("FRED_API_KEY", ""),
-        finnhub_api_key=os.getenv("FINNHUB_API_KEY", ""),
-        alpha_vantage_api_key=os.getenv("ALPHA_VANTAGE_API_KEY", ""),
-        sec_edgar_user_agent=os.getenv("SEC_EDGAR_USER_AGENT", ""),
-        robinhood_username=os.getenv("ROBINHOOD_USERNAME", ""),
-        robinhood_password=os.getenv("ROBINHOOD_PASSWORD", ""),
-        robinhood_totp_secret=os.getenv("ROBINHOOD_TOTP_SECRET", ""),
-        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        fred_api_key=_get_secret("FRED_API_KEY"),
+        finnhub_api_key=_get_secret("FINNHUB_API_KEY"),
+        alpha_vantage_api_key=_get_secret("ALPHA_VANTAGE_API_KEY"),
+        sec_edgar_user_agent=_get_secret("SEC_EDGAR_USER_AGENT"),
+        robinhood_username=_get_secret("ROBINHOOD_USERNAME"),
+        robinhood_password=_get_secret("ROBINHOOD_PASSWORD"),
+        robinhood_totp_secret=_get_secret("ROBINHOOD_TOTP_SECRET"),
+        log_level=_get_secret("LOG_LEVEL", "INFO"),
         db_path=Path(os.getenv("DB_PATH", root / "data" / "stock_model.db")),
         log_dir=Path(os.getenv("LOG_DIR", root / "data" / "logs")),
         cache_dir=Path(os.getenv("CACHE_DIR", root / "data" / "cache")),
