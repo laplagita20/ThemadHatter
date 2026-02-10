@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger("stock_model.schema")
 
-CURRENT_VERSION = 4
+CURRENT_VERSION = 5
 
 TABLES = [
     # --- Phase 1: Foundation ---
@@ -513,6 +513,39 @@ TABLES = [
         UNIQUE(user_id, ticker),
         FOREIGN KEY (user_id) REFERENCES users(id)
     )""",
+
+    # --- Phase 12: AI Advisor & Session Persistence ---
+    """CREATE TABLE IF NOT EXISTS user_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id INTEGER PRIMARY KEY,
+        risk_tolerance TEXT DEFAULT 'moderate',
+        investment_horizon TEXT DEFAULT 'medium',
+        experience_level TEXT DEFAULT 'intermediate',
+        ai_personality TEXT DEFAULT 'balanced',
+        onboarding_completed INTEGER DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS ai_advice_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        advice_type TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        response_text TEXT NOT NULL,
+        model_used TEXT,
+        tokens_used INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
 ]
 
 INDEXES = [
@@ -549,6 +582,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_snapshots_user ON portfolio_snapshots(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_recurring_inv_user ON recurring_investments(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_decisions_user ON decisions(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)",
+    "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_advice_cache_user ON ai_advice_cache(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_advice_cache_lookup ON ai_advice_cache(user_id, advice_type, cache_key)",
 ]
 
 
@@ -582,6 +619,11 @@ def initialize_database(db_connection):
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER")
                 except Exception:
                     pass  # Column already exists
+
+        if current_v < 5:
+            # v5: user_sessions, user_preferences, ai_advice_cache tables
+            # Tables are already created via CREATE TABLE IF NOT EXISTS above
+            pass
 
         if existing is None or existing["v"] is None or existing["v"] < CURRENT_VERSION:
             conn.execute(

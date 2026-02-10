@@ -62,6 +62,40 @@ class UserDAO:
         return row is not None
 
 
+    # --- Session management ---
+
+    def create_session(self, user_id: int, ttl_hours: int = 720) -> str:
+        """Create a persistent session token. Returns the token string."""
+        token = secrets.token_urlsafe(32)
+        expires_at = (
+            datetime.now()
+            + __import__("datetime").timedelta(hours=ttl_hours)
+        ).isoformat()
+        self.db.execute_insert(
+            "INSERT INTO user_sessions (user_id, token, expires_at) VALUES (?, ?, ?)",
+            (user_id, token, expires_at),
+        )
+        return token
+
+    def validate_session(self, token: str):
+        """Validate a session token. Returns user dict or None."""
+        row = self.db.execute_one(
+            """SELECT u.* FROM user_sessions s
+               JOIN users u ON s.user_id = u.id
+               WHERE s.token = ? AND s.expires_at > datetime('now')""",
+            (token,),
+        )
+        return row
+
+    def destroy_session(self, token: str):
+        """Delete a session token."""
+        self.db.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+
+    def cleanup_expired_sessions(self):
+        """Remove expired sessions."""
+        self.db.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
+
+
 class UserWatchlistDAO:
     """Data access for per-user watchlists."""
 
@@ -770,3 +804,101 @@ class RecurringInvestmentDAO:
                WHERE ri.is_active = 1
                ORDER BY ri.ticker"""
         )
+
+
+class UserPreferencesDAO:
+    """Data access for user preferences (risk profile, AI settings)."""
+
+    DEFAULTS = {
+        "risk_tolerance": "moderate",
+        "investment_horizon": "medium",
+        "experience_level": "intermediate",
+        "ai_personality": "balanced",
+        "onboarding_completed": 0,
+    }
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def get(self, user_id: int) -> dict:
+        """Get preferences for a user, auto-creating defaults if missing."""
+        row = self.db.execute_one(
+            "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
+        )
+        if row:
+            return dict(row)
+        # Auto-create defaults
+        self.db.execute_insert(
+            """INSERT INTO user_preferences (user_id, risk_tolerance, investment_horizon,
+               experience_level, ai_personality, onboarding_completed)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, self.DEFAULTS["risk_tolerance"],
+             self.DEFAULTS["investment_horizon"],
+             self.DEFAULTS["experience_level"],
+             self.DEFAULTS["ai_personality"],
+             self.DEFAULTS["onboarding_completed"]),
+        )
+        return {"user_id": user_id, **self.DEFAULTS}
+
+    def update(self, user_id: int, **kwargs):
+        """Update specific preference fields."""
+        allowed = {"risk_tolerance", "investment_horizon", "experience_level",
+                    "ai_personality", "onboarding_completed"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return
+        # Ensure row exists
+        self.get(user_id)
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [user_id]
+        self.db.execute(
+            f"UPDATE user_preferences SET {set_clause} WHERE user_id = ?",
+            tuple(values),
+        )
+
+
+class AIAdviceCacheDAO:
+    """Data access for cached AI advisor responses."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def get_cached(self, user_id: int, advice_type: str, cache_key: str):
+        """Get a cached AI response if still valid."""
+        return self.db.execute_one(
+            """SELECT * FROM ai_advice_cache
+               WHERE user_id = ? AND advice_type = ? AND cache_key = ?
+               AND expires_at > datetime('now')
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, advice_type, cache_key),
+        )
+
+    def store(self, user_id: int, advice_type: str, cache_key: str,
+              response_text: str, model_used: str = None,
+              tokens_used: int = None, ttl_hours: int = 12):
+        """Store an AI response in cache."""
+        expires_at = (
+            datetime.now()
+            + __import__("datetime").timedelta(hours=ttl_hours)
+        ).isoformat()
+        self.db.execute_insert(
+            """INSERT INTO ai_advice_cache
+               (user_id, advice_type, cache_key, response_text,
+                model_used, tokens_used, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, advice_type, cache_key, response_text,
+             model_used, tokens_used, expires_at),
+        )
+
+    def invalidate(self, user_id: int, advice_type: str = None):
+        """Invalidate cached responses for a user."""
+        if advice_type:
+            self.db.execute(
+                "DELETE FROM ai_advice_cache WHERE user_id = ? AND advice_type = ?",
+                (user_id, advice_type),
+            )
+        else:
+            self.db.execute(
+                "DELETE FROM ai_advice_cache WHERE user_id = ?",
+                (user_id,),
+            )

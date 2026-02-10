@@ -43,3 +43,6 @@ nltk>=3.8.1
 
 # Auth (Robinhood MFA)
 pyotp>=2.9.0
+
+# AI Advisor
+anthropic>=0.40.0

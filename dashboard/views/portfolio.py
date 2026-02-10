@@ -14,7 +14,7 @@ from dashboard.components.tables import holdings_table, decisions_table
 from dashboard.components.teach_me import teach_if_enabled
 
 # Cache TTL for live prices (seconds)
-PRICE_CACHE_TTL = 60  # Refresh prices every 60 seconds
+PRICE_CACHE_TTL = 300  # Refresh prices every 5 minutes
 
 # Broker CSV column mappings: (ticker_col, shares_col, cost_col)
 # Values can be a list of possible column names (case-insensitive match)
@@ -363,6 +363,29 @@ def _render_recurring_investments(holdings, user_id: int = None):
                         st.rerun()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_earnings_calendar(tickers: tuple) -> list[dict]:
+    """Fetch upcoming earnings dates for tickers (cached 1 hour)."""
+    earnings_data = []
+    for t in tickers:
+        try:
+            stock_yf = yf.Ticker(t)
+            cal = stock_yf.calendar
+            if cal is not None:
+                if isinstance(cal, dict):
+                    ed = cal.get("Earnings Date")
+                    if ed:
+                        date_str = str(ed[0])[:10] if isinstance(ed, list) else str(ed)[:10]
+                        earnings_data.append({"Ticker": t, "Earnings Date": date_str})
+                elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                    if "Earnings Date" in cal.columns:
+                        date_str = str(cal["Earnings Date"].iloc[0])[:10]
+                        earnings_data.append({"Ticker": t, "Earnings Date": date_str})
+        except Exception:
+            continue
+    return earnings_data
+
+
 def render():
     """Render the portfolio overview page."""
     st.header("Portfolio Overview")
@@ -639,24 +662,7 @@ def render():
 
     # === EARNINGS CALENDAR ===
     with st.expander("Upcoming Earnings"):
-        earnings_data = []
-        for t in tickers[:20]:  # Cap to avoid slow API calls
-            try:
-                stock_yf = yf.Ticker(t)
-                cal = stock_yf.calendar
-                if cal is not None:
-                    if isinstance(cal, dict):
-                        ed = cal.get("Earnings Date")
-                        if ed:
-                            # Can be a list of dates
-                            date_str = str(ed[0])[:10] if isinstance(ed, list) else str(ed)[:10]
-                            earnings_data.append({"Ticker": t, "Earnings Date": date_str})
-                    elif isinstance(cal, pd.DataFrame) and not cal.empty:
-                        if "Earnings Date" in cal.columns:
-                            date_str = str(cal["Earnings Date"].iloc[0])[:10]
-                            earnings_data.append({"Ticker": t, "Earnings Date": date_str})
-            except Exception:
-                continue
+        earnings_data = _fetch_earnings_calendar(tuple(tickers[:20]))
         if earnings_data:
             st.dataframe(pd.DataFrame(earnings_data), width="stretch", hide_index=True)
         else:

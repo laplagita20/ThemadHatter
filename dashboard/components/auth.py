@@ -1,19 +1,41 @@
-"""Authentication UI - Login / Register / Logout for multi-user support."""
+"""Authentication UI - Login / Register / Logout with persistent sessions."""
 
 import streamlit as st
 from database.models import UserDAO
 
 
+def _restore_session_from_token():
+    """Try to restore user session from a URL token parameter."""
+    token = st.query_params.get("token")
+    if not token:
+        return False
+    user_dao = UserDAO()
+    user = user_dao.validate_session(token)
+    if user:
+        st.session_state["user_id"] = user["id"]
+        st.session_state["username"] = user["username"]
+        st.session_state["session_token"] = token
+        return True
+    # Token invalid/expired — clean it from URL
+    del st.query_params["token"]
+    return False
+
+
 def login_register_page():
     """Render the login/register gate page. Returns True if user is authenticated."""
+    # Fast path: already in session state
     if st.session_state.get("user_id"):
+        return True
+
+    # Check for persistent token in URL
+    if _restore_session_from_token():
         return True
 
     st.markdown("""
     <div style="text-align: center; padding: 40px 0 20px 0;">
         <span style="font-size: 3rem;">&#127913;</span>
         <h1 style="color: #f59e0b; margin: 0;">The Mad Hatter</h1>
-        <p style="color: #94a3b8;">Professional-Grade Financial Intelligence</p>
+        <p style="color: #94a3b8;">Your AI-Powered Financial Advisor</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -35,6 +57,10 @@ def login_register_page():
                     if user:
                         st.session_state["user_id"] = user["id"]
                         st.session_state["username"] = user["username"]
+                        # Create persistent session token
+                        token = user_dao.create_session(user["id"])
+                        st.session_state["session_token"] = token
+                        st.query_params["token"] = token
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
@@ -60,6 +86,9 @@ def login_register_page():
                         if user:
                             st.session_state["user_id"] = user["id"]
                             st.session_state["username"] = user["username"]
+                            token = user_dao.create_session(user["id"])
+                            st.session_state["session_token"] = token
+                            st.query_params["token"] = token
                             st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -72,8 +101,19 @@ def logout_button():
     username = st.session_state.get("username", "")
     st.sidebar.caption(f"Logged in as **{username}**")
     if st.sidebar.button("Logout", key="logout_btn"):
-        for key in ["user_id", "username", "risk_report", "live_prices", "live_prices_ts"]:
+        # Destroy server-side session
+        token = st.session_state.get("session_token")
+        if token:
+            try:
+                UserDAO().destroy_session(token)
+            except Exception:
+                pass
+        # Clear client state
+        for key in ["user_id", "username", "session_token",
+                     "risk_report", "live_prices", "live_prices_ts"]:
             st.session_state.pop(key, None)
+        if "token" in st.query_params:
+            del st.query_params["token"]
         st.rerun()
 
 

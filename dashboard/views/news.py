@@ -66,8 +66,9 @@ def _get_credibility_score(source: str) -> float:
     return 0.6  # Default for known but unscored sources
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def _fetch_yfinance_news(ticker: str) -> list[dict]:
-    """Fetch latest news for a ticker from yfinance, filtering for credible sources."""
+    """Fetch latest news for a ticker from yfinance, filtering for credible sources. Cached 30min."""
     try:
         import yfinance as yf
         stock = yf.Ticker(ticker)

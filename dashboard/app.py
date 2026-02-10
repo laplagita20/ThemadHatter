@@ -1,7 +1,7 @@
-"""The Mad Hatter v2 - Professional-Grade Financial Dashboard.
+"""The Mad Hatter v3 - AI-Powered Financial Advisor.
 
-Open-source Bloomberg Terminal-inspired dashboard for stock analysis,
-portfolio management, risk assessment, and macro regime detection.
+Robinhood-inspired dashboard with AI insights, portfolio management,
+risk assessment, and macro regime detection.
 
 Launch: streamlit run dashboard/app.py
   or:   python main.py dashboard
@@ -18,8 +18,8 @@ import streamlit as st
 
 # Page configuration - must be first Streamlit command
 st.set_page_config(
-    page_title="The Mad Hatter - Financial Intelligence",
-    page_icon="🎩",
+    page_title="The Mad Hatter - AI Financial Advisor",
+    page_icon="\U0001f3a9",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -42,6 +42,16 @@ from dashboard.components.auth import login_register_page, logout_button, get_cu
 
 if not login_register_page():
     st.stop()
+
+# Onboarding gate — new users must complete onboarding first
+_uid = get_current_user_id()
+if _uid:
+    from database.models import UserPreferencesDAO as _PrefDAO
+    _prefs = _PrefDAO().get(_uid)
+    if not _prefs.get("onboarding_completed"):
+        from dashboard.views.onboarding import render as _onboarding_render
+        _onboarding_render()
+        st.stop()
 
 # Auto-refresh (optional) - refreshes page every 60s to pick up live price changes
 try:
@@ -72,23 +82,35 @@ teach_me_sidebar()
 
 st.sidebar.divider()
 
-page = st.sidebar.radio("Navigation", [
+# Navigation — support nav_target from quick actions
+PAGES = [
+    "Home",
+    "Advisor",
     "Portfolio",
-    "Recommendations",
+    "Discover",
     "Stock Analysis",
     "News",
-    "Risk Dashboard",
-    "Macro & Market",
-    "Stock Screener",
-], captions=[
+    "Risk & Macro",
+    "Settings",
+]
+PAGE_CAPTIONS = [
+    "AI insights & portfolio overview",
+    "Chat with AI, stock explainer",
     "Holdings, P&L, DCA",
-    "Buy/sell signals & reasoning",
+    "Scanner, top picks, watchlist",
     "Deep-dive single stock",
     "Market-moving headlines",
-    "VaR, Monte Carlo, stress tests",
-    "Economic regimes, yield curves",
-    "Screen & filter stocks",
-])
+    "Risk dashboard & macro regimes",
+    "Preferences & API keys",
+]
+
+# Handle nav_target from quick action buttons
+default_idx = 0
+nav_target = st.session_state.pop("nav_target", None)
+if nav_target and nav_target in PAGES:
+    default_idx = PAGES.index(nav_target)
+
+page = st.sidebar.radio("Navigation", PAGES, captions=PAGE_CAPTIONS, index=default_idx)
 
 st.sidebar.divider()
 
@@ -163,7 +185,6 @@ def _freshness_badge(iso_str: str, fresh_hours: int = 6) -> str:
         return f":red[{iso_str or 'never'}]"
 
 try:
-    _uid = get_current_user_id()
     from database.models import UserWatchlistDAO as _UWL
     _wl_count = len(_UWL().get_tickers(_uid)) if _uid else 0
     st.sidebar.text(f"Watchlist: {_wl_count} stocks")
@@ -231,11 +252,17 @@ with col_act2:
         st.rerun()
 
 # Route to pages
-if page == "Portfolio":
+if page == "Home":
+    from dashboard.views.home import render
+    render()
+elif page == "Advisor":
+    from dashboard.views.advisor import render
+    render()
+elif page == "Portfolio":
     from dashboard.views.portfolio import render
     render()
-elif page == "Recommendations":
-    from dashboard.views.recommendations import render
+elif page == "Discover":
+    from dashboard.views.discover import render
     render()
 elif page == "Stock Analysis":
     from dashboard.views.analyzer import render
@@ -243,12 +270,15 @@ elif page == "Stock Analysis":
 elif page == "News":
     from dashboard.views.news import render
     render()
-elif page == "Risk Dashboard":
-    from dashboard.views.risk import render
-    render()
-elif page == "Macro & Market":
-    from dashboard.views.macro import render
-    render()
-elif page == "Stock Screener":
-    from dashboard.views.screener import render
+elif page == "Risk & Macro":
+    # Combined risk + macro in tabs
+    tab_risk, tab_macro = st.tabs(["Risk Dashboard", "Macro & Market"])
+    with tab_risk:
+        from dashboard.views.risk import render as risk_render
+        risk_render()
+    with tab_macro:
+        from dashboard.views.macro import render as macro_render
+        macro_render()
+elif page == "Settings":
+    from dashboard.views.settings import render
     render()

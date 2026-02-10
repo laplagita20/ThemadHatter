@@ -258,6 +258,64 @@ def inject_theme():
         border-radius: 12px;
         overflow: hidden;
     }
+
+    /* === AI ADVISOR STYLES === */
+
+    /* Chat messages */
+    [data-testid="stChatMessage"] {
+        background: rgba(26, 31, 46, 0.6) !important;
+        border: 1px solid rgba(124, 58, 237, 0.15);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+    }
+
+    /* User messages slightly different */
+    [data-testid="stChatMessage"][data-testid*="user"] {
+        background: rgba(45, 27, 105, 0.3) !important;
+        border-color: rgba(124, 58, 237, 0.3);
+    }
+
+    /* Chat input */
+    [data-testid="stChatInput"] textarea {
+        background: rgba(26, 31, 46, 0.8) !important;
+        border: 1px solid rgba(124, 58, 237, 0.3) !important;
+        border-radius: 12px;
+        color: #e2e8f0 !important;
+    }
+
+    [data-testid="stChatInput"] textarea:focus {
+        border-color: #7c3aed !important;
+        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+    }
+
+    /* Smart alert cards */
+    .smart-alert {
+        background: rgba(26, 31, 46, 0.5);
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+        border-left: 3px solid;
+    }
+    .smart-alert.success { border-left-color: #10b981; }
+    .smart-alert.warning { border-left-color: #f59e0b; }
+    .smart-alert.info { border-left-color: #06b6d4; }
+    .smart-alert.error { border-left-color: #ef4444; }
+
+    /* AI insight card */
+    .ai-insight-card {
+        background: linear-gradient(135deg, rgba(45, 27, 105, 0.3), rgba(6, 182, 212, 0.1));
+        border: 1px solid rgba(124, 58, 237, 0.3);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 8px 0;
+    }
+
+    /* Onboarding progress */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #7c3aed 0%, #f59e0b 100%) !important;
+        border-radius: 4px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -274,7 +332,7 @@ def mad_hatter_header():
         </div>
         <div style="font-size: 0.85rem; color: #06b6d4; letter-spacing: 3px;
                     text-transform: uppercase; margin-top: 4px;">
-            Financial Intelligence
+            AI Financial Advisor
         </div>
         <div style="height: 2px; margin-top: 12px;
                     background: linear-gradient(90deg, transparent, #7c3aed, #f59e0b, #06b6d4, transparent);">
