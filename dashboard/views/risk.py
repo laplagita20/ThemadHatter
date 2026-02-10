@@ -7,6 +7,7 @@ from dashboard.components.charts import (
     create_correlation_heatmap, create_stress_test_chart,
 )
 from dashboard.components.tables import kelly_table, stress_test_table
+from dashboard.components.teach_me import teach_if_enabled
 
 
 def render():
@@ -38,6 +39,7 @@ def render():
 
     # === VaR Section ===
     st.subheader("Value at Risk")
+    teach_if_enabled("var")
     var_data = report.get("var", {})
     if "error" not in var_data:
         col1, col2, col3 = st.columns(3)
@@ -47,14 +49,14 @@ def render():
                 var_data.get("historical_var_pct", 0),
                 "VaR 95% (5-day)"
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with col2:
             fig = create_var_gauge(
                 var_data.get("var_99_pct", 0),
                 "VaR 99% (5-day)"
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with col3:
             st.metric("95% VaR ($)", f"${var_data.get('historical_var_dollar', 0):,.2f}")
@@ -68,6 +70,7 @@ def render():
 
     # === Monte Carlo Section ===
     st.subheader("Monte Carlo Simulation (12-month)")
+    teach_if_enabled("monte_carlo")
     mc = report.get("monte_carlo", {})
     if "error" not in mc:
         # Fan chart
@@ -76,7 +79,7 @@ def render():
                 mc["fan_chart"],
                 mc.get("portfolio_value", 0),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         # Key metrics
         col1, col2, col3, col4 = st.columns(4)
@@ -97,6 +100,7 @@ def render():
 
     # === Correlation Section ===
     st.subheader("Correlation & Diversification")
+    teach_if_enabled("diversification")
     corr = report.get("correlation", {})
     if "error" not in corr:
         col1, col2 = st.columns([2, 1])
@@ -104,7 +108,7 @@ def render():
         with col1:
             if corr.get("correlation_matrix") and corr.get("tickers"):
                 fig = create_correlation_heatmap(corr["tickers"], corr["correlation_matrix"])
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
         with col2:
             div_ratio = corr.get("diversification_ratio", 0)
@@ -126,7 +130,7 @@ def render():
     stress = report.get("stress_tests", [])
     if stress and "error" not in stress[0]:
         fig = create_stress_test_chart(stress)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         stress_test_table(stress)
     else:
         st.info("No stress test results available.")

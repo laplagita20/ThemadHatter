@@ -66,7 +66,7 @@ def run_collection(source: str = "all", ticker: str = None):
 
 
 def start_scheduler():
-    """Start the APScheduler for continuous data collection."""
+    """Start the APScheduler for continuous data collection (blocking mode for CLI)."""
     try:
         from apscheduler.schedulers.blocking import BlockingScheduler
         from apscheduler.triggers.cron import CronTrigger
@@ -76,21 +76,56 @@ def start_scheduler():
         return
 
     scheduler = BlockingScheduler()
+    _add_scheduler_jobs(scheduler, IntervalTrigger, CronTrigger)
 
-    # Market hours: prices every 15min (Mon-Fri 9:30-16:00)
+    logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
+    print("Data collection scheduler started. Press Ctrl+C to stop.")
+
+    try:
+        scheduler.start()
+    except KeyboardInterrupt:
+        scheduler.shutdown()
+        print("Scheduler stopped.")
+
+
+# Global reference so the background scheduler isn't garbage-collected
+_background_scheduler = None
+
+
+def start_background_scheduler():
+    """Start a non-blocking background scheduler (for use inside Streamlit/dashboard).
+
+    Returns the scheduler instance, or None if APScheduler is not installed.
+    Safe to call multiple times - only starts once.
+    """
+    global _background_scheduler
+    if _background_scheduler is not None:
+        return _background_scheduler
+
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
+    except ImportError:
+        logger.warning("APScheduler not installed - background scheduler disabled")
+        return None
+
+    _background_scheduler = BackgroundScheduler()
+    _add_scheduler_jobs(_background_scheduler, IntervalTrigger, CronTrigger)
+    _background_scheduler.start()
+    logger.info("Background scheduler started with %d jobs",
+                len(_background_scheduler.get_jobs()))
+    return _background_scheduler
+
+
+def _add_scheduler_jobs(scheduler, IntervalTrigger, CronTrigger):
+    """Add standard collection jobs to a scheduler instance."""
+    # Market hours: prices every 15min
     scheduler.add_job(
         run_collection, IntervalTrigger(minutes=15),
         kwargs={"source": "yahoo"},
         id="yahoo_prices",
         name="Yahoo Finance prices",
-    )
-
-    # Portfolio every 15min during market hours
-    scheduler.add_job(
-        run_collection, IntervalTrigger(minutes=15),
-        kwargs={"source": "robinhood"},
-        id="robinhood_portfolio",
-        name="Robinhood portfolio",
     )
 
     # News every 30min
@@ -124,12 +159,3 @@ def start_scheduler():
         id="sec_filings",
         name="SEC filings",
     )
-
-    logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
-    print("Data collection scheduler started. Press Ctrl+C to stop.")
-
-    try:
-        scheduler.start()
-    except KeyboardInterrupt:
-        scheduler.shutdown()
-        print("Scheduler stopped.")

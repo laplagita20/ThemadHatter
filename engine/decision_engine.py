@@ -230,6 +230,26 @@ class DecisionEngine:
             "bear_case": bear_case,
             "risk_warnings": risk_warnings,
             "analysis_breakdown": decision.analysis_breakdown,
+            "extended_data": {
+                "conviction_score": decision.conviction_score,
+                "horizons": [
+                    {"horizon": h.horizon, "action": h.action, "score": h.score, "confidence": h.confidence}
+                    for h in decision.horizons
+                ],
+                "scenarios": {
+                    "bull_price": decision.scenarios.bull_price,
+                    "bull_probability": decision.scenarios.bull_probability,
+                    "bull_reasoning": decision.scenarios.bull_reasoning,
+                    "base_price": decision.scenarios.base_price,
+                    "base_probability": decision.scenarios.base_probability,
+                    "base_reasoning": decision.scenarios.base_reasoning,
+                    "bear_price": decision.scenarios.bear_price,
+                    "bear_probability": decision.scenarios.bear_probability,
+                    "bear_reasoning": decision.scenarios.bear_reasoning,
+                },
+                "price_targets": price_targets,
+                "peer_comparison": peer_comparison,
+            },
         })
 
         return decision

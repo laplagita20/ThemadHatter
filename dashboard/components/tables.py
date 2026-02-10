@@ -21,7 +21,7 @@ def holdings_table(holdings: list[dict]):
         "Sector": h.get("sector", "N/A"),
     } for h in holdings])
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 def decisions_table(decisions: list[dict]):
@@ -39,7 +39,7 @@ def decisions_table(decisions: list[dict]):
         "Date": d.get("decided_at", "")[:10],
     } for d in decisions])
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 def scoring_breakdown_table(factors: list[dict]):
@@ -55,7 +55,7 @@ def scoring_breakdown_table(factors: list[dict]):
         "Explanation": f.get("explanation", "")[:80],
     } for f in factors])
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 def stress_test_table(stress_results: list[dict]):
@@ -72,7 +72,7 @@ def stress_test_table(stress_results: list[dict]):
         "Value After": f"${s['portfolio_value_after']:,.0f}",
     } for s in stress_results])
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 def kelly_table(kelly_data: dict):
@@ -118,6 +118,6 @@ def macro_indicators_table(regimes: dict):
 
     if rows:
         df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.info("No macro data available. Run: python main.py collect --source fred")

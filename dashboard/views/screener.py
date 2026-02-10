@@ -1,10 +1,11 @@
 """Stock Screener Dashboard Page."""
 
-import json
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 
 from database.connection import get_connection
+from database.models import StockDAO
 
 
 def render():
@@ -12,6 +13,43 @@ def render():
     st.header("Stock Screener")
 
     db = get_connection()
+    stock_dao = StockDAO()
+
+    # --- Watchlist Management ---
+    with st.expander("Manage Watchlist", expanded=False):
+        col_add, col_remove = st.columns(2)
+
+        with col_add:
+            st.markdown("**Add Tickers**")
+            add_input = st.text_input("Tickers (comma-separated)", placeholder="AAPL, MSFT, NVDA", key="wl_add")
+            if st.button("Add to Watchlist", key="wl_add_btn"):
+                if add_input:
+                    tickers = [t.strip().upper() for t in add_input.split(",") if t.strip()]
+                    for t in tickers:
+                        try:
+                            stock = yf.Ticker(t)
+                            info = stock.info
+                            stock_dao.upsert(
+                                ticker=t,
+                                company_name=info.get("longName", info.get("shortName", "")),
+                                sector=info.get("sector", ""),
+                                industry=info.get("industry", ""),
+                                market_cap=info.get("marketCap"),
+                            )
+                            st.success(f"Added {t} ({info.get('longName', '')})")
+                        except Exception as e:
+                            st.error(f"Failed to add {t}: {e}")
+                    st.rerun()
+
+        with col_remove:
+            st.markdown("**Remove Tickers**")
+            all_stocks = list(db.execute("SELECT ticker FROM stocks WHERE is_active = 1 ORDER BY ticker"))
+            tickers_to_remove = st.multiselect("Select to remove", [s["ticker"] for s in all_stocks], key="wl_remove")
+            if st.button("Remove Selected", key="wl_remove_btn"):
+                for t in tickers_to_remove:
+                    stock_dao.deactivate(t)
+                st.success(f"Removed {len(tickers_to_remove)} ticker(s)")
+                st.rerun()
 
     # Get all stocks with computed scores
     stocks = list(db.execute(
@@ -19,7 +57,7 @@ def render():
     ))
 
     if not stocks:
-        st.warning("No stocks in watchlist. Add stocks with: python main.py watchlist --add AAPL MSFT NVDA")
+        st.warning("No stocks in watchlist. Use 'Manage Watchlist' above to add tickers.")
         return
 
     # Filters
@@ -121,7 +159,7 @@ def render():
         if col in df.columns:
             df[col] = df[col].apply(lambda x: f"{x:.2f}" if x is not None else "N/A")
 
-    st.dataframe(df, use_container_width=True, hide_index=True, height=500)
+    st.dataframe(df, width="stretch", hide_index=True, height=500)
 
     # Export to CSV
     st.divider()

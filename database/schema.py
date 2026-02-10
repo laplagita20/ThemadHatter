@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger("stock_model.schema")
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 TABLES = [
     # --- Phase 1: Foundation ---
@@ -404,6 +404,32 @@ TABLES = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
 
+    # --- Recurring Investments ---
+    """CREATE TABLE IF NOT EXISTS recurring_investments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        amount REAL NOT NULL,
+        frequency TEXT NOT NULL DEFAULT 'monthly',
+        day_of_period INTEGER DEFAULT 1,
+        is_active INTEGER DEFAULT 1,
+        next_investment_date TEXT,
+        total_invested REAL DEFAULT 0,
+        total_shares_bought REAL DEFAULT 0,
+        num_executions INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS recurring_investment_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recurring_id INTEGER REFERENCES recurring_investments(id),
+        ticker TEXT NOT NULL,
+        amount REAL NOT NULL,
+        shares_bought REAL,
+        price_at_execution REAL,
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+
     # --- Phase 7A: Computed Scores ---
     """CREATE TABLE IF NOT EXISTS computed_scores (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -491,6 +517,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_insider_trades_date ON insider_trades(transaction_date)",
     "CREATE INDEX IF NOT EXISTS idx_hedge_fund_ticker ON hedge_fund_holdings(ticker)",
     "CREATE INDEX IF NOT EXISTS idx_hedge_fund_date ON hedge_fund_holdings(report_date)",
+    "CREATE INDEX IF NOT EXISTS idx_recurring_inv_ticker ON recurring_investments(ticker)",
+    "CREATE INDEX IF NOT EXISTS idx_recurring_inv_log_ticker ON recurring_investment_log(ticker)",
 ]
 
 
@@ -507,6 +535,14 @@ def initialize_database(db_connection):
         existing = conn.execute(
             "SELECT MAX(version) as v FROM schema_version"
         ).fetchone()
+        # Migrations
+        current_v = existing["v"] if existing and existing["v"] else 0
+        if current_v < 3:
+            try:
+                conn.execute("ALTER TABLE decisions ADD COLUMN extended_data_json TEXT")
+            except Exception:
+                pass  # Column already exists
+
         if existing is None or existing["v"] is None or existing["v"] < CURRENT_VERSION:
             conn.execute(
                 "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",

@@ -8,6 +8,11 @@ from contextlib import contextmanager
 logger = logging.getLogger("stock_model.database")
 
 
+def _dict_factory(cursor, row):
+    """Row factory that returns dicts instead of sqlite3.Row."""
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+
+
 class DatabaseConnection:
     """Manages SQLite connections with WAL mode for concurrent reads."""
 
@@ -26,7 +31,7 @@ class DatabaseConnection:
     def connect(self):
         """Context manager yielding a database connection with auto-commit."""
         conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = _dict_factory
         try:
             yield conn
             conn.commit()

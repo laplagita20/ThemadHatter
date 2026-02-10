@@ -6,7 +6,7 @@ import yfinance as yf
 import pandas as pd
 
 from collectors.base_collector import BaseCollector
-from database.models import PriceDAO, FundamentalsDAO, StockDAO
+from database.models import PriceDAO, FundamentalsDAO, StockDAO, InsiderTradeDAO
 
 logger = logging.getLogger("stock_model.collectors.yahoo")
 
@@ -23,6 +23,7 @@ class YahooFinanceCollector(BaseCollector):
         self.price_dao = PriceDAO()
         self.fund_dao = FundamentalsDAO()
         self.stock_dao = StockDAO()
+        self.insider_dao = InsiderTradeDAO()
 
     def collect(self, ticker: str = None) -> dict:
         if not ticker:
@@ -45,10 +46,18 @@ class YahooFinanceCollector(BaseCollector):
             ttl=86400,
         )
 
+        # Insider transactions (cached 24 hr)
+        insider_transactions = self._cached_call(
+            f"insider_{ticker}",
+            lambda: stock.insider_transactions,
+            ttl=86400,
+        )
+
         return {
             "ticker": ticker,
             "prices": prices,
             "info": info or {},
+            "insider_transactions": insider_transactions,
         }
 
     def store(self, data: dict):
@@ -110,3 +119,60 @@ class YahooFinanceCollector(BaseCollector):
                 "raw": info,
             })
             logger.info("Stored fundamentals for %s", ticker)
+
+        # Store insider transactions
+        insider_tx = data.get("insider_transactions")
+        if insider_tx is not None and isinstance(insider_tx, pd.DataFrame) and not insider_tx.empty:
+            count = 0
+            for _, row in insider_tx.iterrows():
+                shares = row.get("Shares", 0)
+                value = row.get("Value", 0)
+                # Handle NaN values
+                if pd.isna(shares):
+                    shares = 0
+                if pd.isna(value):
+                    value = 0
+
+                # yfinance puts tx type in Text field (e.g., "Sale at price 271.23 per share.")
+                tx_text = str(row.get("Text", "")).strip()
+                tx_field = str(row.get("Transaction", "")).strip()
+                combined = f"{tx_text} {tx_field}".lower()
+
+                if "sale" in combined or "sell" in combined:
+                    tx_type = "S"
+                elif "purchase" in combined or "buy" in combined:
+                    tx_type = "P"
+                elif "gift" in combined:
+                    tx_type = "A-AWARD"
+                elif "conversion" in combined or "exercise" in combined:
+                    tx_type = "M"  # Exercise/conversion
+                elif not combined.strip() and shares > 0 and (not value or value == 0):
+                    # Empty text with positive shares and no value = stock award/RSU vesting
+                    tx_type = "A-AWARD"
+                else:
+                    tx_type = combined[:20] if combined.strip() else "A-AWARD"
+
+                # Parse date
+                start_date = row.get("Start Date")
+                if hasattr(start_date, "strftime"):
+                    tx_date = start_date.strftime("%Y-%m-%d")
+                elif start_date is not None and not pd.isna(start_date):
+                    tx_date = str(start_date)[:10]
+                else:
+                    tx_date = None
+
+                price_per_share = abs(value / shares) if shares and shares != 0 else None
+
+                self.insider_dao.insert({
+                    "ticker": ticker,
+                    "filer_name": str(row.get("Insider", "Unknown")),
+                    "filer_title": str(row.get("Position", "")) if not pd.isna(row.get("Position", "")) else "",
+                    "transaction_date": tx_date,
+                    "transaction_type": tx_type,
+                    "shares": abs(float(shares)) if shares else 0,
+                    "price_per_share": price_per_share,
+                    "total_value": abs(float(value)) if value else 0,
+                    "shares_owned_after": None,
+                })
+                count += 1
+            logger.info("Stored %d insider transactions for %s", count, ticker)

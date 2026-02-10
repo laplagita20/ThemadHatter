@@ -32,7 +32,7 @@ def render():
     with col1:
         if dalio:
             fig = create_dalio_quadrant_chart(dalio["quadrant"])
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("Insufficient data for Dalio quadrant detection.")
 
@@ -173,7 +173,7 @@ def _render_yield_curve_chart(macro_dao):
             xaxis_title="Date", yaxis_title="Spread (%)",
             height=300, template="plotly_dark",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     except Exception as e:
         st.warning(f"Yield curve chart failed: {e}")
 
@@ -198,6 +198,6 @@ def _render_series_chart(macro_dao, series_id: str, title: str, color: str):
             height=200, template="plotly_dark",
             margin=dict(l=0, r=0, t=30, b=0),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     except Exception:
         pass

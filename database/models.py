@@ -41,6 +41,12 @@ class StockDAO:
             "SELECT ticker, company_name, sector FROM stocks WHERE is_active = 1 ORDER BY ticker"
         )
 
+    def deactivate(self, ticker: str):
+        self.db.execute("UPDATE stocks SET is_active = 0 WHERE ticker = ?", (ticker,))
+
+    def reactivate(self, ticker: str):
+        self.db.execute("UPDATE stocks SET is_active = 1 WHERE ticker = ?", (ticker,))
+
 
 class PriceDAO:
     """Data access for price history."""
@@ -159,8 +165,8 @@ class DecisionDAO:
                (ticker, action, composite_score, confidence,
                 position_size_pct, stop_loss_pct, target_price, time_horizon,
                 reasoning_json, bull_case, bear_case, risk_warnings,
-                analysis_breakdown_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                analysis_breakdown_json, extended_data_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 decision["ticker"], decision["action"],
                 decision["composite_score"], decision["confidence"],
@@ -173,6 +179,7 @@ class DecisionDAO:
                 decision.get("bear_case"),
                 decision.get("risk_warnings"),
                 json.dumps(decision.get("analysis_breakdown", {}), default=str),
+                json.dumps(decision.get("extended_data", {}), default=str) if decision.get("extended_data") else None,
             ),
         )
 
@@ -294,6 +301,19 @@ class PortfolioDAO:
                ORDER BY market_value DESC"""
         )
 
+    def delete_holding(self, ticker: str):
+        """Delete a holding from the latest snapshot by creating a new snapshot without it."""
+        holdings = list(self.get_latest_holdings())
+        holdings = [h for h in holdings if h["ticker"] != ticker]
+        if holdings:
+            self.snapshot_holdings(holdings)
+
+    def get_latest_snapshot_date(self):
+        row = self.db.execute_one(
+            "SELECT MAX(snapshot_date) as max_date FROM portfolio_holdings"
+        )
+        return row["max_date"] if row else None
+
     def insert_snapshot(self, total_equity: float, cash: float,
                         total_pl: float, total_pl_pct: float, num_positions: int):
         self.db.execute_insert(
@@ -381,6 +401,27 @@ class InsiderTradeDAO:
 
     def __init__(self, db=None):
         self.db = db or get_connection()
+
+    def insert(self, trade: dict):
+        """Insert an insider trade record."""
+        self.db.execute_insert(
+            """INSERT OR IGNORE INTO insider_trades
+               (ticker, filer_name, filer_title, transaction_date,
+                transaction_type, shares, price_per_share, total_value,
+                shares_owned_after)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                trade["ticker"],
+                trade.get("filer_name"),
+                trade.get("filer_title"),
+                trade.get("transaction_date"),
+                trade.get("transaction_type"),
+                trade.get("shares"),
+                trade.get("price_per_share"),
+                trade.get("total_value"),
+                trade.get("shares_owned_after"),
+            ),
+        )
 
     def get_recent(self, ticker: str, days: int = 90):
         return self.db.execute(
@@ -474,4 +515,111 @@ class RiskSimulationDAO:
             )
         return self.db.execute(
             "SELECT * FROM risk_simulations ORDER BY computed_at DESC LIMIT 10"
+        )
+
+
+class RecurringInvestmentDAO:
+    """Data access for recurring (DCA) investments."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def create(self, ticker: str, amount: float, frequency: str = "monthly",
+               day_of_period: int = 1):
+        """Create a new recurring investment plan."""
+        from datetime import date, timedelta
+        today = date.today()
+        if frequency == "daily":
+            # Next market day (skip weekends)
+            next_date = today + timedelta(days=1)
+            while next_date.weekday() >= 5:  # 5=Sat, 6=Sun
+                next_date += timedelta(days=1)
+        elif frequency == "weekly":
+            # Next occurrence on the chosen weekday (0=Mon, 6=Sun)
+            days_ahead = day_of_period - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            next_date = today + timedelta(days=days_ahead)
+        elif frequency == "biweekly":
+            days_ahead = day_of_period - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 14
+            next_date = today + timedelta(days=days_ahead)
+        else:  # monthly
+            import calendar
+            month = today.month + 1 if today.day >= day_of_period else today.month
+            year = today.year
+            if month > 12:
+                month = 1
+                year += 1
+            max_day = calendar.monthrange(year, month)[1]
+            next_date = date(year, month, min(day_of_period, max_day))
+
+        return self.db.execute_insert(
+            """INSERT INTO recurring_investments
+               (ticker, amount, frequency, day_of_period, next_investment_date)
+               VALUES (?, ?, ?, ?, ?)""",
+            (ticker, amount, frequency, day_of_period, next_date.isoformat()),
+        )
+
+    def get_all_active(self):
+        return self.db.execute(
+            """SELECT * FROM recurring_investments
+               WHERE is_active = 1 ORDER BY ticker"""
+        )
+
+    def get_for_ticker(self, ticker: str):
+        return self.db.execute_one(
+            """SELECT * FROM recurring_investments
+               WHERE ticker = ? AND is_active = 1
+               ORDER BY created_at DESC LIMIT 1""",
+            (ticker,),
+        )
+
+    def deactivate(self, recurring_id: int):
+        self.db.execute(
+            "UPDATE recurring_investments SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (recurring_id,),
+        )
+
+    def update_amount(self, recurring_id: int, amount: float):
+        self.db.execute(
+            "UPDATE recurring_investments SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (amount, recurring_id),
+        )
+
+    def log_execution(self, recurring_id: int, ticker: str, amount: float,
+                      shares_bought: float, price: float):
+        """Log a recurring investment execution and update totals."""
+        self.db.execute_insert(
+            """INSERT INTO recurring_investment_log
+               (recurring_id, ticker, amount, shares_bought, price_at_execution)
+               VALUES (?, ?, ?, ?, ?)""",
+            (recurring_id, ticker, amount, shares_bought, price),
+        )
+        self.db.execute(
+            """UPDATE recurring_investments SET
+               total_invested = total_invested + ?,
+               total_shares_bought = total_shares_bought + ?,
+               num_executions = num_executions + 1,
+               updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (amount, shares_bought, recurring_id),
+        )
+
+    def get_log(self, ticker: str, limit: int = 50):
+        return self.db.execute(
+            """SELECT * FROM recurring_investment_log
+               WHERE ticker = ? ORDER BY executed_at DESC LIMIT ?""",
+            (ticker, limit),
+        )
+
+    def get_summary(self):
+        """Get a summary of all active recurring investments."""
+        return self.db.execute(
+            """SELECT ri.*, s.company_name, s.sector
+               FROM recurring_investments ri
+               LEFT JOIN stocks s ON ri.ticker = s.ticker
+               WHERE ri.is_active = 1
+               ORDER BY ri.ticker"""
         )
