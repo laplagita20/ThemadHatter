@@ -300,6 +300,13 @@ def render():
         _render_empty_state(portfolio_dao, stock_dao, user_id)
         return
 
+    # Refresh with live prices
+    from dashboard.views.portfolio import _get_live_prices, _apply_live_prices
+    tickers = [h["ticker"] for h in holdings]
+    live_prices = _get_live_prices(tickers)
+    if live_prices:
+        holdings = _apply_live_prices(holdings, live_prices)
+
     # Portfolio Hero
     _render_portfolio_hero(holdings)
 
