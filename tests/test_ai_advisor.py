@@ -1,4 +1,4 @@
-"""Tests for the AI advisor module with mocked Anthropic client."""
+"""Tests for the AI advisor module with mocked Groq client."""
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -27,14 +27,15 @@ def user_with_portfolio(user_with_prefs, test_db, sample_holdings):
 
 
 @pytest.fixture
-def mock_anthropic():
-    """Mock the anthropic module."""
+def mock_groq():
+    """Mock the Groq client with OpenAI-compatible response format."""
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="This is a test AI response.")]
-    mock_response.usage.input_tokens = 100
-    mock_response.usage.output_tokens = 50
-    mock_client.messages.create.return_value = mock_response
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "This is a test AI response."
+    mock_response.usage.prompt_tokens = 100
+    mock_response.usage.completion_tokens = 50
+    mock_client.chat.completions.create.return_value = mock_response
     return mock_client
 
 
@@ -167,13 +168,13 @@ class TestAIAdviceCache:
 class TestClaudeAdvisor:
     def test_is_available_no_key(self, user_with_prefs):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="")
+            mock_settings.return_value = MagicMock(groq_api_key="")
             advisor = ClaudeAdvisor(user_with_prefs)
             assert advisor.is_available() is False
 
     def test_is_available_with_key(self, user_with_prefs):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="sk-ant-test")
+            mock_settings.return_value = MagicMock(groq_api_key="gsk_test")
             advisor = ClaudeAdvisor(user_with_prefs)
             assert advisor.is_available() is True
 
@@ -222,58 +223,58 @@ class TestClaudeAdvisor:
 
     def test_portfolio_digest_no_key(self, user_with_prefs):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="")
+            mock_settings.return_value = MagicMock(groq_api_key="")
             advisor = ClaudeAdvisor(user_with_prefs)
             result = advisor.get_portfolio_digest()
             assert result is None
 
     def test_explain_stock_no_key(self, user_with_prefs):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="")
+            mock_settings.return_value = MagicMock(groq_api_key="")
             advisor = ClaudeAdvisor(user_with_prefs)
             result = advisor.explain_stock("AAPL")
             assert result is None
 
-    def test_portfolio_digest_with_mock(self, user_with_portfolio, mock_anthropic):
+    def test_portfolio_digest_with_mock(self, user_with_portfolio, mock_groq):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="sk-ant-test")
+            mock_settings.return_value = MagicMock(groq_api_key="gsk_test")
             advisor = ClaudeAdvisor(user_with_portfolio)
-            advisor._client = mock_anthropic
+            advisor._client = mock_groq
 
             result = advisor.get_portfolio_digest()
             assert result == "This is a test AI response."
-            mock_anthropic.messages.create.assert_called_once()
+            mock_groq.chat.completions.create.assert_called_once()
 
-    def test_explain_stock_with_mock(self, user_with_portfolio, mock_anthropic):
+    def test_explain_stock_with_mock(self, user_with_portfolio, mock_groq):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="sk-ant-test")
+            mock_settings.return_value = MagicMock(groq_api_key="gsk_test")
             advisor = ClaudeAdvisor(user_with_portfolio)
-            advisor._client = mock_anthropic
+            advisor._client = mock_groq
 
             result = advisor.explain_stock("AAPL")
             assert result == "This is a test AI response."
 
-    def test_answer_question_with_mock(self, user_with_portfolio, mock_anthropic):
+    def test_answer_question_with_mock(self, user_with_portfolio, mock_groq):
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="sk-ant-test")
+            mock_settings.return_value = MagicMock(groq_api_key="gsk_test")
             advisor = ClaudeAdvisor(user_with_portfolio)
-            advisor._client = mock_anthropic
+            advisor._client = mock_groq
 
             result = advisor.answer_question("How is my portfolio doing?")
             assert result == "This is a test AI response."
 
-    def test_digest_caching(self, user_with_portfolio, mock_anthropic, test_db):
+    def test_digest_caching(self, user_with_portfolio, mock_groq, test_db):
         """Test that digest results are cached and reused."""
         with patch("analysis.ai_advisor.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(anthropic_api_key="sk-ant-test")
+            mock_settings.return_value = MagicMock(groq_api_key="gsk_test")
             advisor = ClaudeAdvisor(user_with_portfolio)
-            advisor._client = mock_anthropic
+            advisor._client = mock_groq
 
             # First call — hits API
             result1 = advisor.get_portfolio_digest()
-            assert mock_anthropic.messages.create.call_count == 1
+            assert mock_groq.chat.completions.create.call_count == 1
 
             # Second call — should use cache
             result2 = advisor.get_portfolio_digest()
-            assert mock_anthropic.messages.create.call_count == 1  # Not called again
+            assert mock_groq.chat.completions.create.call_count == 1  # Not called again
             assert result2 == result1

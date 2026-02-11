@@ -72,7 +72,7 @@ def _render_ai_insights(user_id: int):
                 </div>
                 <div style="color: #94a3b8; margin-bottom: 16px;">
                     Get daily portfolio digests, trade ideas, and personalized analysis
-                    powered by Claude AI.
+                    powered by AI. Set up your free Groq API key to get started.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -262,7 +262,7 @@ def _render_empty_state(portfolio_dao, stock_dao, user_id: int):
                 Enable AI Insights
             </div>
             <div style="color: #94a3b8; font-size: 0.9rem;">
-                Add your Anthropic API key to unlock portfolio digests, trade ideas, and stock explanations.
+                Add your free Groq API key to unlock portfolio digests, trade ideas, and stock explanations.
             </div>
         </div>
         """, unsafe_allow_html=True)

@@ -13,7 +13,7 @@ def _ai_setup_cta(feature_name: str = "this feature"):
             AI Required
         </div>
         <div style="color: #94a3b8; margin-bottom: 12px;">
-            Add your Anthropic API key in Settings to enable {feature_name}.
+            Add your Groq API key in Settings to enable {feature_name} (it's free!).
         </div>
     </div>
     """, unsafe_allow_html=True)

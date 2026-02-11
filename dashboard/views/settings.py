@@ -107,12 +107,12 @@ def render():
     # AI Advisor API Key
     st.subheader("AI Advisor")
     _render_api_key_field(
-        "Anthropic API Key",
-        "ANTHROPIC_API_KEY",
+        "Groq API Key (Free)",
+        "GROQ_API_KEY",
         "Powers AI insights, stock explanations, and trade ideas. "
-        "Get a key from [console.anthropic.com](https://console.anthropic.com/)",
+        "Get a free key from [console.groq.com](https://console.groq.com/)",
         config_dao,
-        placeholder="sk-ant-...",
+        placeholder="gsk_...",
     )
 
     st.divider()

@@ -1,4 +1,4 @@
-"""AI Financial Advisor powered by Claude (Anthropic).
+"""AI Financial Advisor powered by Groq (free tier).
 
 Provides personalized portfolio insights, stock explanations, trade suggestions,
 and free-form Q&A. Gracefully degrades when no API key is configured.
@@ -17,12 +17,11 @@ from database.models import (
 logger = logging.getLogger("stock_model.ai_advisor")
 
 # Model constants
-SONNET_MODEL = "claude-sonnet-4-5-20250929"
-OPUS_MODEL = "claude-opus-4-6"
+PRIMARY_MODEL = "llama-3.3-70b-versatile"
 
 
-class ClaudeAdvisor:
-    """AI financial advisor backed by Claude API."""
+class GroqAdvisor:
+    """AI financial advisor backed by Groq API (free tier)."""
 
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -32,19 +31,19 @@ class ClaudeAdvisor:
         self._prefs_dao = UserPreferencesDAO()
 
     def is_available(self) -> bool:
-        """Check if the Anthropic API key is configured."""
+        """Check if the Groq API key is configured."""
         settings = get_settings()
-        return bool(settings.anthropic_api_key)
+        return bool(settings.groq_api_key)
 
     def _get_client(self):
-        """Lazy-init Anthropic client."""
+        """Lazy-init Groq client."""
         if self._client is None:
             try:
-                import anthropic
+                from groq import Groq
                 settings = get_settings()
-                self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+                self._client = Groq(api_key=settings.groq_api_key)
             except Exception as e:
-                logger.error("Failed to initialize Anthropic client: %s", e)
+                logger.error("Failed to initialize Groq client: %s", e)
                 raise
         return self._client
 
@@ -158,43 +157,46 @@ Guidelines:
             return "Watchlist is empty."
         return f"Watchlist: {', '.join(tickers)}"
 
-    def _call_claude(self, messages: list[dict], system: str = None,
-                     model: str = None, max_tokens: int = 1500) -> tuple[str, dict]:
-        """Make a Claude API call. Returns (response_text, usage_dict)."""
+    def _call_llm(self, messages: list[dict], system: str = None,
+                  model: str = None, max_tokens: int = 1500) -> tuple[str, dict]:
+        """Make a Groq API call. Returns (response_text, usage_dict)."""
         client = self._get_client()
-        model = model or SONNET_MODEL
+        model = model or PRIMARY_MODEL
         system = system or self._build_system_prompt()
 
-        response = client.messages.create(
+        full_messages = [{"role": "system", "content": system}] + messages
+        response = client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,
-            system=system,
-            messages=messages,
+            messages=full_messages,
         )
-        text = response.content[0].text
+        text = response.choices[0].message.content
         usage = {
             "model": model,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+            "input_tokens": response.usage.prompt_tokens,
+            "output_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.prompt_tokens + response.usage.completion_tokens,
         }
         return text, usage
 
-    def _stream_claude(self, messages: list[dict], system: str = None,
-                       model: str = None, max_tokens: int = 1500):
-        """Stream a Claude API response. Yields text chunks."""
+    def _stream_llm(self, messages: list[dict], system: str = None,
+                    model: str = None, max_tokens: int = 1500):
+        """Stream a Groq API response. Yields text chunks."""
         client = self._get_client()
-        model = model or SONNET_MODEL
+        model = model or PRIMARY_MODEL
         system = system or self._build_system_prompt()
 
-        with client.messages.stream(
+        full_messages = [{"role": "system", "content": system}] + messages
+        stream = client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+            messages=full_messages,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+            if delta:
+                yield delta
 
     # --- Public API ---
 
@@ -225,7 +227,7 @@ Provide:
 Keep it concise and conversational."""}]
 
         try:
-            text, usage = self._call_claude(messages, max_tokens=800)
+            text, usage = self._call_llm(messages, max_tokens=800)
             self._cache_dao.store(
                 self.user_id, "portfolio_digest", cache_key, text,
                 model_used=usage["model"], tokens_used=usage["total_tokens"],
@@ -281,7 +283,7 @@ Tell me:
 4. What would you suggest? (buy, hold, sell, or watch)"""}]
 
         try:
-            text, usage = self._call_claude(messages, max_tokens=1200)
+            text, usage = self._call_llm(messages, max_tokens=1200)
             self._cache_dao.store(
                 self.user_id, "stock_explain", ticker, text,
                 model_used=usage["model"], tokens_used=usage["total_tokens"],
@@ -315,7 +317,7 @@ reference analysis data if available. If it's a general market question, provide
 best analysis while noting uncertainty."""}]
 
         try:
-            text, _ = self._call_claude(messages, max_tokens=1500)
+            text, _ = self._call_llm(messages, max_tokens=1500)
             return text
         except Exception as e:
             logger.error("Answer question failed: %s", e)
@@ -324,7 +326,7 @@ best analysis while noting uncertainty."""}]
     def stream_answer(self, question: str, chat_history: list[dict] = None):
         """Stream an answer to a free-form question. Yields text chunks."""
         if not self.is_available():
-            yield "AI advisor is not configured. Add your Anthropic API key in Settings."
+            yield "AI advisor is not configured. Add your Groq API key in Settings (it's free!)."
             return
 
         portfolio_ctx = self._build_portfolio_context()
@@ -346,13 +348,13 @@ Current Portfolio Context:
         messages.append({"role": "user", "content": question})
 
         try:
-            yield from self._stream_claude(messages, system=system, max_tokens=1500)
+            yield from self._stream_llm(messages, system=system, max_tokens=1500)
         except Exception as e:
             logger.error("Stream answer failed: %s", e)
             yield f"Sorry, I encountered an error: {e}"
 
     def get_trade_suggestion(self) -> str:
-        """Get a deep AI-powered trade suggestion. Uses Opus. Cached 24h."""
+        """Get a deep AI-powered trade suggestion. Cached 24h."""
         if not self.is_available():
             return None
 
@@ -384,8 +386,8 @@ Analyze deeply and provide:
 Be thorough but practical. This should be an actionable recommendation."""}]
 
         try:
-            text, usage = self._call_claude(
-                messages, model=SONNET_MODEL, max_tokens=2000
+            text, usage = self._call_llm(
+                messages, model=PRIMARY_MODEL, max_tokens=2000
             )
             self._cache_dao.store(
                 self.user_id, "trade_suggestion", cache_key, text,
@@ -456,3 +458,7 @@ Be thorough but practical. This should be an actionable recommendation."""}]
                 })
 
         return alerts
+
+
+# Backward-compatibility alias
+ClaudeAdvisor = GroqAdvisor

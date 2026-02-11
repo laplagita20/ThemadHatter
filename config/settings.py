@@ -27,7 +27,7 @@ class Settings:
     sec_edgar_user_agent: str = ""
 
     # AI Advisor
-    anthropic_api_key: str = ""
+    groq_api_key: str = ""
 
     # Robinhood
     robinhood_username: str = ""
@@ -119,7 +119,7 @@ def get_settings() -> Settings:
     load_dotenv(env_path)
 
     _settings = Settings(
-        anthropic_api_key=_get_secret("ANTHROPIC_API_KEY"),
+        groq_api_key=_get_secret("GROQ_API_KEY"),
         fred_api_key=_get_secret("FRED_API_KEY"),
         finnhub_api_key=_get_secret("FINNHUB_API_KEY"),
         alpha_vantage_api_key=_get_secret("ALPHA_VANTAGE_API_KEY"),
