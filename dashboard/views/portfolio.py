@@ -397,48 +397,51 @@ def render():
     stock_dao = StockDAO()
     db = get_connection()
 
-    # --- Add Holdings Dropdown ---
+    # --- Add Holdings ---
     with st.expander("Add Holdings", expanded=False):
         teach_if_enabled("cost_basis", inline=True)
 
-        import_method = st.selectbox(
-            "How would you like to add holdings?",
-            ["Manual Entry", "Import from Broker", "Paste CSV"],
-            key="import_method",
+        st.caption("Enter holdings, one per line. Use `@ price` for cost basis. Your data stays local.")
+        portfolio_text = st.text_area(
+            "Holdings",
+            placeholder="AAPL 100 @ 150\nMSFT 50 @ 380\nNVDA 20",
+            height=120,
+            key="portfolio_text_input",
+            label_visibility="collapsed",
         )
 
-        if import_method == "Manual Entry":
-            st.caption("Enter each position one at a time. Your data stays local.")
-            with st.form("add_holding_form", clear_on_submit=True):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    ticker_input = st.text_input("Ticker Symbol", placeholder="AAPL").upper().strip()
-                with col2:
-                    shares_input = st.number_input("Shares", min_value=0.0, step=0.01, format="%.4f")
-                with col3:
-                    cost_input = st.number_input("Cost Basis per Share ($)", min_value=0.0, step=0.01, format="%.2f")
-
-                submitted = st.form_submit_button("Add Holding", type="primary")
-
-                if submitted and ticker_input and shares_input > 0:
-                    with st.spinner(f"Fetching {ticker_input} data..."):
+        if st.button("Add Holdings", type="primary", key="add_holdings_btn"):
+            if portfolio_text and portfolio_text.strip():
+                from utils.portfolio_parser import parse_portfolio_text
+                parsed = parse_portfolio_text(portfolio_text)
+                if not parsed:
+                    st.error("Could not parse any holdings. Use format: `AAPL 100 @ 150`")
+                else:
+                    progress = st.progress(0)
+                    imported = 0
+                    for i, row in enumerate(parsed):
                         try:
-                            holding = _fetch_and_build_holding(ticker_input, shares_input, cost_input)
+                            holding = _fetch_and_build_holding(row["ticker"], row["shares"], row["cost"])
                             info = holding.pop("_info")
                             _merge_and_snapshot(portfolio_dao, holding, user_id)
                             stock_dao.upsert(
-                                ticker=ticker_input,
+                                ticker=row["ticker"],
                                 company_name=info.get("longName", info.get("shortName", "")),
                                 sector=info.get("sector", ""),
                                 industry=info.get("industry", ""),
                                 market_cap=info.get("marketCap"),
                             )
-                            st.success(f"Added {shares_input:.2f} shares of {ticker_input} at ${cost_input:.2f}")
-                            st.rerun()
+                            imported += 1
                         except Exception as e:
-                            st.error(f"Failed to add holding: {e}")
+                            st.warning(f"Skipped {row['ticker']}: {e}")
+                        progress.progress((i + 1) / len(parsed))
+                    st.success(f"Added {imported} of {len(parsed)} holdings")
+                    st.rerun()
+            else:
+                st.warning("Enter at least one holding.")
 
-        elif import_method == "Import from Broker":
+        # Broker CSV import in collapsed section
+        with st.expander("Import from Broker CSV"):
             broker = st.selectbox(
                 "Select your broker",
                 list(BROKER_FORMATS.keys()),
@@ -446,9 +449,6 @@ def render():
             )
             fmt = BROKER_FORMATS[broker]
             st.info(fmt["help"])
-            st.caption(
-                "Your CSV never leaves your machine. We only look up current prices via Yahoo Finance."
-            )
 
             csv_input = st.text_area(
                 f"Paste your {broker} CSV export here",
@@ -488,38 +488,6 @@ def render():
                         st.rerun()
                 else:
                     st.warning("Paste your CSV data first")
-
-        elif import_method == "Paste CSV":
-            st.caption("Generic format: `ticker, shares, cost_basis` (one per line, no header needed)")
-            csv_input = st.text_area(
-                "Paste CSV data",
-                placeholder="AAPL, 10, 150.00\nMSFT, 5, 300.00\nNVDA, 20, 120.50",
-                height=100,
-                key="generic_csv_input",
-            )
-            if st.button("Import Holdings", key="generic_import_btn"):
-                if csv_input.strip():
-                    lines = [l.strip() for l in csv_input.strip().split("\n") if l.strip()]
-                    progress = st.progress(0)
-                    imported = 0
-                    for i, line in enumerate(lines):
-                        parts = [p.strip() for p in line.split(",")]
-                        if len(parts) >= 3:
-                            try:
-                                t, s, c = parts[0].upper(), float(parts[1]), float(parts[2])
-                                holding = _fetch_and_build_holding(t, s, c)
-                                info = holding.pop("_info")
-                                _merge_and_snapshot(portfolio_dao, holding, user_id)
-                                stock_dao.upsert(
-                                    ticker=t, company_name=info.get("longName", ""),
-                                    sector=info.get("sector", ""), industry=info.get("industry", ""),
-                                )
-                                imported += 1
-                            except Exception as e:
-                                st.error(f"Failed for {parts[0]}: {e}")
-                        progress.progress((i + 1) / len(lines))
-                    st.success(f"Imported {imported} of {len(lines)} positions")
-                    st.rerun()
 
     holdings = list(portfolio_dao.get_latest_holdings(user_id))
 

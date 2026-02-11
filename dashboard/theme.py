@@ -316,6 +316,32 @@ def inject_theme():
         background: linear-gradient(90deg, #7c3aed 0%, #f59e0b 100%) !important;
         border-radius: 4px;
     }
+
+    /* Setup cards for empty state and CTAs */
+    .setup-card {
+        background: linear-gradient(135deg, rgba(45, 27, 105, 0.4), rgba(30, 20, 70, 0.6));
+        border: 1px solid rgba(124, 58, 237, 0.3);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 16px;
+        transition: all 0.3s ease;
+    }
+    .setup-card:hover {
+        border-color: rgba(124, 58, 237, 0.6);
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.15);
+    }
+
+    /* API key status cards */
+    .api-key-card {
+        background: rgba(26, 31, 46, 0.6);
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    .api-key-card.configured {
+        border-color: rgba(16, 185, 129, 0.4);
+    }
     </style>
     """, unsafe_allow_html=True)
 

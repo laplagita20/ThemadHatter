@@ -2,9 +2,49 @@
 
 import streamlit as st
 
-from config.settings import get_settings
-from database.models import UserPreferencesDAO
+from config.settings import get_settings, invalidate_settings
+from database.models import UserPreferencesDAO, AppConfigDAO, AIAdviceCacheDAO
 from dashboard.components.auth import get_current_user_id
+from dashboard.components.teach_me import teach_me_sidebar
+
+
+def _render_api_key_field(label: str, config_key: str, description: str,
+                          config_dao: AppConfigDAO, placeholder: str = "sk-..."):
+    """Render an interactive API key field with save/remove."""
+    settings = get_settings()
+    current = getattr(settings, config_key.lower(), "") or ""
+
+    st.markdown(f"**{label}**")
+    st.caption(description)
+
+    if current:
+        # Show masked key + remove button
+        masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "****"
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.success(f"Configured: `{masked}`")
+        with col2:
+            if st.button("Remove", key=f"remove_{config_key}"):
+                config_dao.delete(config_key.upper())
+                invalidate_settings()
+                st.rerun()
+    else:
+        # Show input field
+        new_key = st.text_input(
+            f"Enter {label}",
+            type="password",
+            placeholder=placeholder,
+            key=f"input_{config_key}",
+            label_visibility="collapsed",
+        )
+        if st.button("Save", key=f"save_{config_key}", type="primary"):
+            if new_key and new_key.strip():
+                config_dao.set(config_key.upper(), new_key.strip())
+                invalidate_settings()
+                st.success(f"{label} saved!")
+                st.rerun()
+            else:
+                st.warning("Please enter a key.")
 
 
 def render():
@@ -18,6 +58,7 @@ def render():
 
     prefs_dao = UserPreferencesDAO()
     prefs = prefs_dao.get(user_id)
+    config_dao = AppConfigDAO()
 
     # Investment Profile
     st.subheader("Investment Profile")
@@ -58,53 +99,63 @@ def render():
                 experience_level=experience_level,
                 ai_personality=ai_personality,
             )
-            # Invalidate AI cache so new preferences take effect
-            from database.models import AIAdviceCacheDAO
             AIAdviceCacheDAO().invalidate(user_id)
             st.success("Profile updated! AI advice will adapt to your new preferences.")
 
     st.divider()
 
-    # API Key Status
-    st.subheader("AI Advisor Status")
-    settings = get_settings()
-
-    if settings.anthropic_api_key:
-        st.success("Anthropic API key is configured. AI features are active.")
-        # Show masked key
-        key = settings.anthropic_api_key
-        masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "****"
-        st.text(f"Key: {masked}")
-    else:
-        st.warning("No Anthropic API key configured. AI features are disabled.")
-        st.markdown("""
-        **To enable AI features:**
-        1. Get an API key from [console.anthropic.com](https://console.anthropic.com/)
-        2. Add it to your `.env` file: `ANTHROPIC_API_KEY=sk-ant-...`
-        3. Or set it as an environment variable
-        4. Restart the dashboard
-        """)
+    # AI Advisor API Key
+    st.subheader("AI Advisor")
+    _render_api_key_field(
+        "Anthropic API Key",
+        "ANTHROPIC_API_KEY",
+        "Powers AI insights, stock explanations, and trade ideas. "
+        "Get a key from [console.anthropic.com](https://console.anthropic.com/)",
+        config_dao,
+        placeholder="sk-ant-...",
+    )
 
     st.divider()
 
-    # Other API Keys
+    # Data Source API Keys
     st.subheader("Data Source API Keys")
 
-    apis = [
-        ("FRED", settings.fred_api_key, "Economic data (GDP, inflation, rates)"),
-        ("Alpha Vantage", settings.alpha_vantage_api_key, "Analyst targets, earnings history"),
-        ("Finnhub", settings.finnhub_api_key, "Real-time quotes, market news"),
-    ]
+    _render_api_key_field(
+        "FRED API Key",
+        "FRED_API_KEY",
+        "Economic data (GDP, inflation, interest rates). "
+        "Free at [fred.stlouisfed.org/docs/api](https://fred.stlouisfed.org/docs/api/api_key.html)",
+        config_dao,
+        placeholder="abc123...",
+    )
 
-    for name, key, desc in apis:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.text(f"{name}: {desc}")
-        with col2:
-            if key:
-                st.markdown(":green[Configured]")
-            else:
-                st.markdown(":red[Not set]")
+    st.markdown("")  # spacing
+
+    _render_api_key_field(
+        "Alpha Vantage API Key",
+        "ALPHA_VANTAGE_API_KEY",
+        "Analyst price targets and earnings history. "
+        "Free at [alphavantage.co](https://www.alphavantage.co/support/#api-key)",
+        config_dao,
+        placeholder="ABCD1234...",
+    )
+
+    st.markdown("")  # spacing
+
+    _render_api_key_field(
+        "Finnhub API Key",
+        "FINNHUB_API_KEY",
+        "Real-time quotes and market news. "
+        "Free at [finnhub.io](https://finnhub.io/register)",
+        config_dao,
+        placeholder="abc123def...",
+    )
+
+    st.divider()
+
+    # Learning Mode
+    st.subheader("Learning Mode")
+    teach_me_sidebar()
 
     st.divider()
 
@@ -114,7 +165,6 @@ def render():
 
     with col1:
         if st.button("Clear AI Cache", key="clear_ai_cache"):
-            from database.models import AIAdviceCacheDAO
             AIAdviceCacheDAO().invalidate(user_id)
             st.success("AI cache cleared. Fresh insights will be generated.")
 

@@ -127,44 +127,44 @@ def _step_portfolio(user_id: int):
     st.header("Import Your Portfolio")
     st.markdown("Add your holdings so we can give you personalized advice. You can always do this later.")
 
-    tab_manual, tab_skip = st.tabs(["Add Manually", "Skip for Now"])
+    st.caption("Enter holdings, one per line. Use `@ price` for cost basis.")
+    portfolio_text = st.text_area(
+        "Holdings",
+        placeholder="AAPL 100 @ 150\nMSFT 50 @ 380\nNVDA 20\nGOOGL 10 @ 140",
+        height=150,
+        key="ob_portfolio_text",
+        label_visibility="collapsed",
+    )
 
-    with tab_manual:
-        with st.form("manual_portfolio"):
-            st.markdown("Enter your top holdings:")
-            holdings = []
-            for i in range(5):
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    ticker = st.text_input("Ticker", key=f"ob_ticker_{i}",
-                                           placeholder="AAPL").strip().upper()
-                with col2:
-                    shares = st.number_input("Shares", key=f"ob_shares_{i}",
-                                             min_value=0.0, step=1.0, value=0.0)
-                with col3:
-                    cost = st.number_input("Avg Cost", key=f"ob_cost_{i}",
-                                           min_value=0.0, step=1.0, value=0.0)
-                if ticker and shares > 0:
-                    holdings.append({"ticker": ticker, "quantity": shares,
-                                     "average_cost": cost})
-
-            submitted = st.form_submit_button("Save Holdings", type="primary")
-            if submitted and holdings:
-                portfolio_dao = PortfolioDAO()
-                portfolio_dao.snapshot_holdings(holdings, user_id)
-                st.success(f"Added {len(holdings)} holdings!")
-                st.session_state.onboarding_step = 4
-                st.rerun()
-
-    with tab_skip:
-        st.info("No worries! You can import holdings later from the Portfolio page.")
-        if st.button("Skip to Watchlist", key="ob_skip_portfolio"):
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("Save Holdings", type="primary", key="ob_save_holdings"):
+            if portfolio_text and portfolio_text.strip():
+                from utils.portfolio_parser import parse_portfolio_text
+                parsed = parse_portfolio_text(portfolio_text)
+                if parsed:
+                    holdings = [
+                        {"ticker": p["ticker"], "quantity": p["shares"],
+                         "average_cost": p["cost"]}
+                        for p in parsed
+                    ]
+                    portfolio_dao = PortfolioDAO()
+                    portfolio_dao.snapshot_holdings(holdings, user_id)
+                    st.success(f"Added {len(holdings)} holdings!")
+                    st.session_state.onboarding_step = 4
+                    st.rerun()
+                else:
+                    st.error("Could not parse any holdings. Use format: `AAPL 100 @ 150`")
+            else:
+                st.warning("Enter at least one holding, or skip.")
+    with col2:
+        if st.button("Skip for Now", key="ob_skip_portfolio"):
             st.session_state.onboarding_step = 4
             st.rerun()
-
-    if st.button("Back", key="ob_back_3"):
-        st.session_state.onboarding_step = 2
-        st.rerun()
+    with col3:
+        if st.button("Back", key="ob_back_3"):
+            st.session_state.onboarding_step = 2
+            st.rerun()
 
 
 def _step_watchlist(user_id: int, prefs_dao: UserPreferencesDAO):

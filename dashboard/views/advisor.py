@@ -5,13 +5,30 @@ import streamlit as st
 from dashboard.components.auth import get_current_user_id
 
 
+def _ai_setup_cta(feature_name: str = "this feature"):
+    """Render an actionable CTA when AI is unavailable."""
+    st.markdown(f"""
+    <div class="setup-card">
+        <div style="font-size: 1.2rem; font-weight: 700; color: #f59e0b; margin-bottom: 8px;">
+            AI Required
+        </div>
+        <div style="color: #94a3b8; margin-bottom: 12px;">
+            Add your Anthropic API key in Settings to enable {feature_name}.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Go to Settings", key=f"cta_{feature_name.replace(' ', '_')}", type="primary"):
+        st.session_state["nav_target"] = "Settings"
+        st.rerun()
+
+
 def _render_chat_tab(user_id: int):
     """Render the conversational AI chat interface."""
     from analysis.ai_advisor import ClaudeAdvisor
     advisor = ClaudeAdvisor(user_id)
 
     if not advisor.is_available():
-        st.info("Add your Anthropic API key in **Settings** to enable AI chat.")
+        _ai_setup_cta("AI chat")
         return
 
     # Initialize chat history
@@ -72,7 +89,7 @@ def _render_explain_tab(user_id: int):
     advisor = ClaudeAdvisor(user_id)
 
     if not advisor.is_available():
-        st.info("Add your Anthropic API key in **Settings** to enable stock explanations.")
+        _ai_setup_cta("stock explanations")
         return
 
     st.markdown("Enter a ticker to get a plain-English analysis of what the data says.")
@@ -111,7 +128,7 @@ def _render_trade_ideas_tab(user_id: int):
     advisor = ClaudeAdvisor(user_id)
 
     if not advisor.is_available():
-        st.info("Add your Anthropic API key in **Settings** to enable trade ideas.")
+        _ai_setup_cta("trade ideas")
         return
 
     st.markdown("""

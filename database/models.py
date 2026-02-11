@@ -11,6 +11,31 @@ from utils.validators import validate_ticker, validate_price, validate_amount, g
 logger = logging.getLogger("stock_model.models")
 
 
+class AppConfigDAO:
+    """Simple key-value config store using the app_config table."""
+
+    def __init__(self, db=None):
+        self.db = db or get_connection()
+
+    def get(self, key: str) -> str | None:
+        row = self.db.execute_one(
+            "SELECT value FROM app_config WHERE key = ?", (key,)
+        )
+        return row["value"] if row else None
+
+    def set(self, key: str, value: str):
+        self.db.execute_insert(
+            """INSERT INTO app_config (key, value, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+               updated_at = CURRENT_TIMESTAMP""",
+            (key, value),
+        )
+
+    def delete(self, key: str):
+        self.db.execute("DELETE FROM app_config WHERE key = ?", (key,))
+
+
 class UserDAO:
     """Data access for user authentication."""
 

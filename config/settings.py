@@ -79,15 +79,33 @@ _settings: Settings | None = None
 
 
 def _get_secret(key: str, default: str = "") -> str:
-    """Read a secret from Streamlit Cloud secrets or environment variable."""
-    # Streamlit Cloud injects secrets as st.secrets
+    """Read a secret from Streamlit secrets > env vars > app_config DB table."""
+    # 1. Streamlit Cloud injects secrets as st.secrets
     try:
         import streamlit as st
         if hasattr(st, "secrets") and key in st.secrets:
             return str(st.secrets[key])
     except Exception:
         pass
-    return os.getenv(key, default)
+    # 2. Environment variable
+    env_val = os.getenv(key, "")
+    if env_val:
+        return env_val
+    # 3. app_config table in DB
+    try:
+        from database.models import AppConfigDAO
+        val = AppConfigDAO().get(key)
+        if val:
+            return val
+    except Exception:
+        pass
+    return default
+
+
+def invalidate_settings():
+    """Clear the cached settings singleton so it reloads on next access."""
+    global _settings
+    _settings = None
 
 
 def get_settings() -> Settings:

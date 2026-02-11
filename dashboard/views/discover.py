@@ -270,6 +270,50 @@ def _render_watchlist_tab(user_id: int):
         st.rerun()
 
 
+def _render_news_tab(user_id: int):
+    """Market News tab — imports from news.py rendering logic."""
+    from dashboard.views.news import (
+        _fetch_yfinance_news, _store_articles, _dedupe_and_sort,
+        _render_article_card, _is_credible, MARKET_TICKERS,
+    )
+
+    db = get_connection()
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        credible_only = st.toggle("Credible Sources Only", value=True,
+                                   key="disc_news_credible")
+    with col2:
+        refresh = st.button("Refresh News", key="disc_news_refresh")
+
+    if refresh:
+        with st.spinner("Fetching market headlines..."):
+            for ticker in MARKET_TICKERS:
+                articles = _fetch_yfinance_news(ticker)
+                _store_articles(articles)
+
+    # Load from DB
+    market_articles = []
+    for ticker in MARKET_TICKERS:
+        articles = list(db.execute(
+            """SELECT * FROM news_articles
+               WHERE ticker = ? ORDER BY published_at DESC LIMIT 15""",
+            (ticker,),
+        ))
+        market_articles.extend(articles)
+
+    if credible_only:
+        market_articles = [a for a in market_articles if _is_credible(a.get("source", ""))]
+
+    market_articles = _dedupe_and_sort(market_articles)
+
+    if market_articles:
+        for article in market_articles[:20]:
+            _render_article_card(article, show_credibility=True)
+    else:
+        st.info("No market news cached yet. Click 'Refresh News' to fetch headlines.")
+
+
 def render():
     """Render the discover page."""
     st.header("Discover")
@@ -279,8 +323,8 @@ def render():
         st.warning("Please log in.")
         return
 
-    tab_scanner, tab_picks, tab_watchlist = st.tabs([
-        "Market Scanner", "Top Picks", "My Watchlist"
+    tab_scanner, tab_picks, tab_watchlist, tab_news = st.tabs([
+        "Market Scanner", "Top Picks", "My Watchlist", "Market News"
     ])
 
     with tab_scanner:
@@ -291,3 +335,6 @@ def render():
 
     with tab_watchlist:
         _render_watchlist_tab(user_id)
+
+    with tab_news:
+        _render_news_tab(user_id)
