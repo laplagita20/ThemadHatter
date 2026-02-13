@@ -401,44 +401,130 @@ def render():
     with st.expander("Add Holdings", expanded=False):
         teach_if_enabled("cost_basis", inline=True)
 
-        st.caption("Enter holdings, one per line. Use `@ price` for cost basis. Your data stays local.")
-        portfolio_text = st.text_area(
-            "Holdings",
-            placeholder="AAPL 100 @ 150\nMSFT 50 @ 380\nNVDA 20",
-            height=120,
-            key="portfolio_text_input",
-            label_visibility="collapsed",
-        )
+        # Build ticker dropdown: watchlist + DB stocks + popular tickers
+        _popular = [
+            "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B",
+            "JPM", "V", "UNH", "JNJ", "XOM", "PG", "MA", "HD", "KO", "PEP",
+            "AVGO", "COST", "MRK", "LLY", "ABBV", "WMT", "MCD", "CRM", "AMD",
+            "NFLX", "INTC", "QCOM", "BA", "DIS", "PYPL", "SOFI", "PLTR", "COIN",
+            "SPY", "QQQ", "VOO", "VTI", "ARKK", "IWM", "DIA", "GLD",
+        ]
+        _wl_tickers = []
+        try:
+            from database.models import UserWatchlistDAO
+            _wl_tickers = UserWatchlistDAO().get_tickers(user_id)
+        except Exception:
+            pass
+        _db_tickers = []
+        try:
+            _db_rows = list(db.execute("SELECT DISTINCT ticker FROM stocks ORDER BY ticker"))
+            _db_tickers = [r["ticker"] for r in _db_rows]
+        except Exception:
+            pass
+        _all_tickers = sorted(set(_wl_tickers + _db_tickers + _popular))
 
-        if st.button("Add Holdings", type="primary", key="add_holdings_btn"):
-            if portfolio_text and portfolio_text.strip():
-                from utils.portfolio_parser import parse_portfolio_text
-                parsed = parse_portfolio_text(portfolio_text)
-                if not parsed:
-                    st.error("Could not parse any holdings. Use format: `AAPL 100 @ 150`")
+        # Form-based add (dropdown + inputs)
+        with st.form("add_holding_form", clear_on_submit=True):
+            st.markdown("**Quick Add**")
+            col_ticker, col_shares, col_cost, col_btn = st.columns([2, 1, 1, 1])
+            with col_ticker:
+                selected_ticker = st.selectbox(
+                    "Stock",
+                    options=[""] + _all_tickers,
+                    index=0,
+                    key="add_ticker_select",
+                    help="Select a stock or type to search",
+                )
+                custom_ticker = st.text_input(
+                    "Or enter ticker manually",
+                    placeholder="e.g. SMCI",
+                    key="add_ticker_custom",
+                )
+            with col_shares:
+                add_shares = st.number_input(
+                    "Shares",
+                    min_value=0.0,
+                    value=0.0,
+                    step=1.0,
+                    format="%.2f",
+                    key="add_shares",
+                )
+            with col_cost:
+                add_cost = st.number_input(
+                    "Cost Basis ($)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=1.0,
+                    format="%.2f",
+                    key="add_cost",
+                    help="Price per share you paid. Leave 0 to use current price.",
+                )
+            with col_btn:
+                st.markdown("")  # vertical spacer to align with inputs
+                submitted = st.form_submit_button("Add", type="primary")
+
+            if submitted:
+                ticker_to_add = (custom_ticker.strip().upper() or selected_ticker.strip().upper())
+                if not ticker_to_add:
+                    st.warning("Select or enter a ticker.")
+                elif add_shares <= 0:
+                    st.warning("Enter the number of shares.")
                 else:
-                    progress = st.progress(0)
-                    imported = 0
-                    for i, row in enumerate(parsed):
+                    with st.spinner(f"Adding {ticker_to_add}..."):
                         try:
-                            holding = _fetch_and_build_holding(row["ticker"], row["shares"], row["cost"])
+                            cost = add_cost if add_cost > 0 else 0
+                            holding = _fetch_and_build_holding(ticker_to_add, add_shares, cost)
                             info = holding.pop("_info")
                             _merge_and_snapshot(portfolio_dao, holding, user_id)
                             stock_dao.upsert(
-                                ticker=row["ticker"],
+                                ticker=ticker_to_add,
                                 company_name=info.get("longName", info.get("shortName", "")),
                                 sector=info.get("sector", ""),
                                 industry=info.get("industry", ""),
                                 market_cap=info.get("marketCap"),
                             )
-                            imported += 1
+                            st.success(f"Added {add_shares:.2f} shares of {ticker_to_add}")
+                            st.rerun()
                         except Exception as e:
-                            st.warning(f"Skipped {row['ticker']}: {e}")
-                        progress.progress((i + 1) / len(parsed))
-                    st.success(f"Added {imported} of {len(parsed)} holdings")
-                    st.rerun()
-            else:
-                st.warning("Enter at least one holding.")
+                            st.error(f"Failed to add {ticker_to_add}: {e}")
+
+        # Bulk text entry (collapsed)
+        with st.expander("Bulk add (paste multiple)"):
+            st.caption("Enter multiple holdings, one per line: `AAPL 100 @ 150`")
+            portfolio_text = st.text_area(
+                "Holdings",
+                placeholder="AAPL 100 @ 150\nMSFT 50 @ 380\nNVDA 20",
+                height=100,
+                key="portfolio_text_input",
+                label_visibility="collapsed",
+            )
+            if st.button("Add All", type="primary", key="add_holdings_btn"):
+                if portfolio_text and portfolio_text.strip():
+                    from utils.portfolio_parser import parse_portfolio_text
+                    parsed = parse_portfolio_text(portfolio_text)
+                    if not parsed:
+                        st.error("Could not parse. Use format: `AAPL 100 @ 150`")
+                    else:
+                        progress = st.progress(0)
+                        imported = 0
+                        for i, row in enumerate(parsed):
+                            try:
+                                holding = _fetch_and_build_holding(row["ticker"], row["shares"], row["cost"])
+                                info = holding.pop("_info")
+                                _merge_and_snapshot(portfolio_dao, holding, user_id)
+                                stock_dao.upsert(
+                                    ticker=row["ticker"],
+                                    company_name=info.get("longName", info.get("shortName", "")),
+                                    sector=info.get("sector", ""),
+                                    industry=info.get("industry", ""),
+                                    market_cap=info.get("marketCap"),
+                                )
+                                imported += 1
+                            except Exception as e:
+                                st.warning(f"Skipped {row['ticker']}: {e}")
+                            progress.progress((i + 1) / len(parsed))
+                        st.success(f"Added {imported} of {len(parsed)} holdings")
+                        st.rerun()
 
         # Broker CSV import in collapsed section
         with st.expander("Import from Broker CSV"):

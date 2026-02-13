@@ -127,46 +127,64 @@ def _render_smart_alerts(user_id: int):
 
 
 def _render_quick_add(portfolio_dao, stock_dao, user_id: int):
-    """Render a compact quick-add bar for holdings."""
+    """Render a compact quick-add form for holdings."""
     st.caption("Quick Add Holdings")
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        quick_text = st.text_input(
-            "Add holdings",
-            placeholder="AAPL 100 @ 150, MSFT 50",
-            key="home_quick_add",
-            label_visibility="collapsed",
-        )
-    with col2:
-        add_btn = st.button("Add", key="home_quick_add_btn", type="primary")
 
-    if add_btn and quick_text and quick_text.strip():
-        from utils.portfolio_parser import parse_portfolio_text
-        parsed = parse_portfolio_text(quick_text)
-        if parsed:
-            import yfinance as yf
-            imported = 0
-            for row in parsed:
-                try:
-                    from dashboard.views.portfolio import _fetch_and_build_holding, _merge_and_snapshot
-                    holding = _fetch_and_build_holding(row["ticker"], row["shares"], row["cost"])
-                    info = holding.pop("_info")
-                    _merge_and_snapshot(portfolio_dao, holding, user_id)
-                    stock_dao.upsert(
-                        ticker=row["ticker"],
-                        company_name=info.get("longName", info.get("shortName", "")),
-                        sector=info.get("sector", ""),
-                        industry=info.get("industry", ""),
-                        market_cap=info.get("marketCap"),
-                    )
-                    imported += 1
-                except Exception as e:
-                    st.warning(f"Skipped {row['ticker']}: {e}")
-            if imported:
-                st.success(f"Added {imported} holding(s)")
-                st.rerun()
-        else:
-            st.error("Could not parse. Use format: `AAPL 100 @ 150`")
+    # Build ticker list from DB + popular
+    from database.connection import get_connection
+    _popular = [
+        "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "JPM", "V",
+        "HD", "KO", "PEP", "AVGO", "COST", "AMD", "NFLX", "SPY", "QQQ", "VOO",
+    ]
+    _db_tickers = []
+    try:
+        db = get_connection()
+        rows = list(db.execute("SELECT DISTINCT ticker FROM stocks ORDER BY ticker"))
+        _db_tickers = [r["ticker"] for r in rows]
+    except Exception:
+        pass
+    _all_tickers = sorted(set(_db_tickers + _popular))
+
+    with st.form("home_quick_add_form", clear_on_submit=True):
+        col_t, col_s, col_c, col_b = st.columns([2, 1, 1, 1])
+        with col_t:
+            selected = st.selectbox("Stock", [""] + _all_tickers, index=0, key="home_qa_ticker")
+            custom = st.text_input("Or type ticker", placeholder="SMCI", key="home_qa_custom")
+        with col_s:
+            shares = st.number_input("Shares", min_value=0.0, value=0.0, step=1.0,
+                                     format="%.2f", key="home_qa_shares")
+        with col_c:
+            cost = st.number_input("Cost ($)", min_value=0.0, value=0.0, step=1.0,
+                                   format="%.2f", key="home_qa_cost",
+                                   help="Leave 0 for current price")
+        with col_b:
+            st.markdown("")
+            submitted = st.form_submit_button("Add", type="primary")
+
+        if submitted:
+            ticker = (custom.strip().upper() or selected.strip().upper())
+            if not ticker:
+                st.warning("Select or enter a ticker.")
+            elif shares <= 0:
+                st.warning("Enter the number of shares.")
+            else:
+                with st.spinner(f"Adding {ticker}..."):
+                    try:
+                        from dashboard.views.portfolio import _fetch_and_build_holding, _merge_and_snapshot
+                        holding = _fetch_and_build_holding(ticker, shares, cost if cost > 0 else 0)
+                        info = holding.pop("_info")
+                        _merge_and_snapshot(portfolio_dao, holding, user_id)
+                        stock_dao.upsert(
+                            ticker=ticker,
+                            company_name=info.get("longName", info.get("shortName", "")),
+                            sector=info.get("sector", ""),
+                            industry=info.get("industry", ""),
+                            market_cap=info.get("marketCap"),
+                        )
+                        st.success(f"Added {shares:.2f} shares of {ticker}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed: {e}")
 
 
 def _render_holdings_mini(holdings: list[dict]):
