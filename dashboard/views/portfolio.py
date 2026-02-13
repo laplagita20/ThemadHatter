@@ -268,6 +268,7 @@ def _render_recurring_investments(holdings, user_id: int = None):
     st.subheader("Recurring Investments (DCA)")
     teach_if_enabled("recurring_investment")
 
+    db = get_connection()
     recurring_dao = RecurringInvestmentDAO()
     active_plans = list(recurring_dao.get_all_active(user_id))
 
@@ -303,27 +304,47 @@ def _render_recurring_investments(holdings, user_id: int = None):
 
     # Add new recurring investment
     with st.expander("Set Up Recurring Investment", expanded=not active_plans):
-        tickers_available = [h["ticker"] for h in holdings] if holdings else []
+        # Build ticker list: holdings + watchlist + DB stocks + popular
+        _holding_tickers = [h["ticker"] for h in holdings] if holdings else []
+        _popular_dca = [
+            "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "VOO",
+            "SPY", "QQQ", "VTI", "SCHD", "VYM", "ARKK", "IWM", "DIA", "GLD",
+            "KO", "PEP", "JNJ", "PG", "HD", "JPM", "V", "COST", "AVGO",
+        ]
+        _wl_tickers = []
+        try:
+            from database.models import UserWatchlistDAO
+            _wl_tickers = UserWatchlistDAO().get_tickers(user_id)
+        except Exception:
+            pass
+        _db_tickers = []
+        try:
+            _db_rows = list(db.execute("SELECT DISTINCT ticker FROM stocks ORDER BY ticker"))
+            _db_tickers = [r["ticker"] for r in _db_rows]
+        except Exception:
+            pass
+        _all_rec_tickers = sorted(set(_holding_tickers + _wl_tickers + _db_tickers + _popular_dca))
 
         with st.form("recurring_form", clear_on_submit=True):
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                if tickers_available:
-                    rec_ticker = st.selectbox(
-                        "Stock", ["(New ticker)"] + tickers_available, key="rec_ticker"
-                    )
-                    if rec_ticker == "(New ticker)":
-                        rec_ticker = st.text_input("Enter ticker", key="rec_new_ticker").upper().strip()
-                else:
-                    rec_ticker = st.text_input("Ticker Symbol", placeholder="AAPL", key="rec_ticker_input").upper().strip()
+                rec_selected = st.selectbox(
+                    "Stock", [""] + _all_rec_tickers, index=0, key="rec_ticker_select",
+                    help="Pick from your holdings, watchlist, or popular stocks",
+                )
+                rec_custom = st.text_input(
+                    "Or enter ticker",
+                    placeholder="e.g. SMCI",
+                    key="rec_ticker_custom",
+                )
             with col2:
                 rec_amount = st.number_input("Amount ($)", min_value=1.0, value=100.0, step=25.0, format="%.2f")
             with col3:
                 rec_frequency = st.selectbox("Frequency", ["daily", "weekly", "biweekly", "monthly"])
             with col4:
                 if rec_frequency == "daily":
-                    rec_day = 0  # Not used for daily
-                    st.caption("Invests every market day (Mon-Fri)")
+                    rec_day = 0
+                    st.caption("Every market day")
                 elif rec_frequency == "monthly":
                     rec_day = st.number_input("Day of Month", min_value=1, max_value=28, value=1)
                 else:
@@ -331,6 +352,7 @@ def _render_recurring_investments(holdings, user_id: int = None):
                                            format_func=lambda x: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][x])
 
             if st.form_submit_button("Create DCA Plan", type="primary"):
+                rec_ticker = (rec_custom.strip().upper() or rec_selected.strip().upper())
                 if rec_ticker:
                     try:
                         recurring_dao.create(rec_ticker, rec_amount, rec_frequency, rec_day, user_id)
@@ -339,7 +361,7 @@ def _render_recurring_investments(holdings, user_id: int = None):
                     except Exception as e:
                         st.error(f"Failed to create plan: {e}")
                 else:
-                    st.warning("Enter a ticker symbol")
+                    st.warning("Select or enter a ticker")
 
     # Manage existing plans
     if active_plans:
