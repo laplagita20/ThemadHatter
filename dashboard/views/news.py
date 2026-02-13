@@ -1,7 +1,8 @@
-"""News Feed Dashboard Page - Portfolio, market, and political news from credible sources."""
+"""News & Media Dashboard Page - Video, portfolio, market, and political news from credible sources."""
 
 import time
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -43,6 +44,15 @@ SOURCE_CREDIBILITY = {
 # Political/market news tickers (proxies for market-wide and political news)
 MARKET_TICKERS = ["SPY", "QQQ", "DIA", "IWM", "VTI"]
 POLITICAL_TICKERS = ["GLD", "TLT", "UUP", "DXY"]  # Gold, bonds, dollar - sensitive to political events
+
+# YouTube channel embed URLs (no API key needed)
+VIDEO_CHANNELS = {
+    "Morningstar": "https://www.youtube.com/embed/videoseries?list=UUjz3mNEdLWnJCuf1MUqbMlQ",
+    "CNBC": "https://www.youtube.com/embed/videoseries?list=UUvJJ_dzjViJCoLf5uKUTwoA",
+    "Bloomberg Markets": "https://www.youtube.com/embed/videoseries?list=UUIpMAOv5sNg5bV_ZjDJy3SA",
+    "Yahoo Finance": "https://www.youtube.com/embed/videoseries?list=UUEAZeUIeJs0IjQiqTCdVSIg",
+    "Tastytrade": "https://www.youtube.com/embed/videoseries?list=UUhRfH7IeWmx6nU3srlyCHMg",
+}
 
 
 def _is_credible(source: str) -> bool:
@@ -134,11 +144,11 @@ def _render_article_card(article: dict, show_credibility: bool = False):
         cred_badge = ""
 
     st.markdown(f"""
-    <div style="background: linear-gradient(135deg, rgba(45, 27, 105, 0.3), rgba(30, 20, 70, 0.5));
-                border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 10px;
+    <div style="background: #1E222D;
+                border: 1px solid #2A2E39; border-radius: 10px;
                 padding: 16px; margin-bottom: 12px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="color: #06b6d4; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;">
+            <span style="color: #787B86; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;">
                 {source}{cred_badge if show_credibility else ""}
             </span>
             <span style="color: #94a3b8; font-size: 0.75rem;">{pub_display}</span>
@@ -150,8 +160,8 @@ def _render_article_card(article: dict, show_credibility: bool = False):
         </div>
         {"<div style='color: #94a3b8; font-size: 0.85rem; margin-bottom: 8px;'>" + summary[:250] + ("..." if len(summary) > 250 else "") + "</div>" if summary else ""}
         <div style="display: flex; gap: 8px; align-items: center;">
-            {"<span style='background: rgba(124, 58, 237, 0.3); color: #a78bfa; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;'>" + ticker + "</span>" if ticker else ""}
-            {"<a href='" + url + "' target='_blank' style='color: #f59e0b; font-size: 0.8rem; text-decoration: none;'>Read full article &rarr;</a>" if url else ""}
+            {"<span style='background: rgba(41, 98, 255, 0.3); color: #2962FF; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;'>" + ticker + "</span>" if ticker else ""}
+            {"<a href='" + url + "' target='_blank' style='color: #2962FF; font-size: 0.8rem; text-decoration: none;'>Read full article &rarr;</a>" if url else ""}
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -201,8 +211,8 @@ def _is_news_stale(db) -> bool:
 
 
 def render():
-    """Render the news feed page."""
-    st.header("Market News")
+    """Render the news & media page."""
+    st.header("News & Media")
 
     teach_if_enabled("news_sentiment")
 
@@ -262,9 +272,41 @@ def render():
         refresh = True  # Trigger auto-refresh
 
     # === TABS ===
-    tab_portfolio, tab_market, tab_political, tab_all = st.tabs([
-        "Portfolio News", "Market News", "Political & Macro", "All News"
+    tab_video, tab_portfolio, tab_market, tab_political, tab_all = st.tabs([
+        "Video", "Portfolio News", "Market News", "Political & Macro", "All News"
     ])
+
+    # === VIDEO TAB ===
+    with tab_video:
+        st.subheader("Financial Video")
+        channel_name = st.selectbox(
+            "Channel",
+            list(VIDEO_CHANNELS.keys()),
+            key="video_channel",
+        )
+        embed_url = VIDEO_CHANNELS[channel_name]
+        components.html(
+            f'<iframe width="100%" height="500" src="{embed_url}" '
+            f'frameborder="0" allow="accelerometer; autoplay; clipboard-write; '
+            f'encrypted-media; gyroscope; picture-in-picture; web-share" '
+            f'allowfullscreen style="border-radius: 8px;"></iframe>',
+            height=520,
+        )
+        st.caption(f"Showing latest uploads from **{channel_name}**")
+
+        st.divider()
+        st.markdown("**More financial video sources:**")
+        link_cols = st.columns(5)
+        video_links = [
+            ("Morningstar", "https://www.youtube.com/@morningstar"),
+            ("CNBC", "https://www.youtube.com/@CNBC"),
+            ("Bloomberg", "https://www.youtube.com/@markets"),
+            ("Yahoo Finance", "https://www.youtube.com/@YahooFinance"),
+            ("Tastytrade", "https://www.youtube.com/@tastyliveshow"),
+        ]
+        for i, (name, url) in enumerate(video_links):
+            with link_cols[i]:
+                st.markdown(f"[{name}]({url})")
 
     # Fetch if refreshing (manual or auto)
     if refresh:

@@ -48,7 +48,7 @@ def _step_welcome():
         <div style="font-size: 4rem; margin-bottom: 16px;">&#127913;</div>
         <h1 style="color: #f59e0b; margin-bottom: 8px;">Welcome to The Mad Hatter</h1>
         <p style="color: #94a3b8; font-size: 1.2rem; max-width: 600px; margin: 0 auto 24px;">
-            Your AI-powered financial advisor. Let's set up your profile
+            Your personal trading dashboard. Let's set up your profile
             so we can give you personalized insights.
         </p>
     </div>
@@ -57,10 +57,10 @@ def _step_welcome():
     st.markdown("""
     **Here's what The Mad Hatter can do for you:**
 
-    - **AI Portfolio Insights** — Daily digests and personalized analysis
     - **Smart Alerts** — Tax-loss harvesting, earnings, concentration warnings
-    - **Stock Explainer** — Plain-English analysis of any stock
-    - **Trade Ideas** — AI-powered suggestions based on your goals
+    - **News & Video** — Curated financial news and video from trusted sources
+    - **Stock Analysis** — Deep-dive technical and fundamental analysis
+    - **Fed Economic Data** — Key indicators, jobless claims, inflation, GDP
     - **Market Scanner** — Scan thousands of stocks for opportunities
     """)
 
@@ -98,12 +98,6 @@ def _step_risk_profile(user_id: int, prefs_dao: UserPreferencesDAO):
             help="This affects how we explain things to you.",
         )
 
-        ai_personality = st.selectbox(
-            "AI Communication Style",
-            ["balanced", "concise", "detailed", "encouraging"],
-            help="How should the AI advisor talk to you?",
-        )
-
         submitted = st.form_submit_button("Continue", type="primary")
 
         if submitted:
@@ -112,7 +106,6 @@ def _step_risk_profile(user_id: int, prefs_dao: UserPreferencesDAO):
                 risk_tolerance=risk_tolerance,
                 investment_horizon=investment_horizon,
                 experience_level=experience_level,
-                ai_personality=ai_personality,
             )
             st.session_state.onboarding_step = 3
             st.rerun()

@@ -91,7 +91,7 @@ PAGES = [
     "Watchlist",
     "Analysis",
     "Markets",
-    "AI Advisor",
+    "News & Media",
     "Settings",
 ]
 PAGE_CAPTIONS = [
@@ -100,7 +100,7 @@ PAGE_CAPTIONS = [
     "Track & screen stocks",
     "Stock deep-dive",
     "Macro, risk & scanner",
-    "Chat with AI advisor",
+    "Headlines, video & sources",
     "Preferences & API keys",
 ]
 
@@ -212,8 +212,8 @@ render_market_bar()
 if page == "Today":
     from dashboard.views.today import render
     render()
-elif page == "AI Advisor":
-    from dashboard.views.advisor import render
+elif page == "News & Media":
+    from dashboard.views.news import render
     render()
 elif page == "Portfolio":
     from dashboard.views.portfolio import render

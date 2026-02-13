@@ -1,4 +1,4 @@
-"""Home Dashboard — AI-powered portfolio overview and insights."""
+"""Home Dashboard — Portfolio overview and insights."""
 
 import streamlit as st
 import pandas as pd
@@ -56,74 +56,6 @@ def _render_portfolio_hero(holdings: list[dict]):
             st.metric("Best", best["ticker"],
                       delta=f"{_safe_val(best.get('unrealized_pl_pct')):+.1f}%")
 
-
-def _render_ai_insights(user_id: int):
-    """Render AI-generated portfolio digest (full width)."""
-    try:
-        from analysis.ai_advisor import ClaudeAdvisor
-        advisor = ClaudeAdvisor(user_id)
-
-        if not advisor.is_available():
-            # Actionable CTA
-            st.markdown("""
-            <div class="setup-card">
-                <div style="font-size: 1.3rem; font-weight: 700; color: #f59e0b; margin-bottom: 8px;">
-                    Unlock AI Insights
-                </div>
-                <div style="color: #94a3b8; margin-bottom: 16px;">
-                    Get daily portfolio digests, trade ideas, and personalized analysis
-                    powered by AI. Set up your free Groq API key to get started.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Set Up AI in Settings", key="home_setup_ai", type="primary"):
-                st.session_state["nav_target"] = "Settings"
-                st.rerun()
-            return
-
-        col1, col2 = st.columns([6, 1])
-        with col2:
-            refresh = st.button("Refresh", key="refresh_digest")
-
-        if refresh:
-            from database.models import AIAdviceCacheDAO
-            AIAdviceCacheDAO().invalidate(user_id, "portfolio_digest")
-
-        with st.spinner("Generating insights..."):
-            digest = advisor.get_portfolio_digest()
-
-        if digest:
-            st.markdown(digest)
-        else:
-            st.info("Unable to generate insights right now. Try again later.")
-    except Exception:
-        st.info("AI insights unavailable. Add your API key in Settings to enable.")
-
-
-def _render_smart_alerts(user_id: int):
-    """Render smart alerts as compact strip."""
-    try:
-        from analysis.ai_advisor import ClaudeAdvisor
-        advisor = ClaudeAdvisor(user_id)
-        alerts = advisor.get_smart_alerts()
-    except Exception:
-        alerts = []
-
-    if not alerts:
-        return
-
-    st.subheader("Smart Alerts")
-
-    for alert in alerts[:6]:
-        severity = alert.get("severity", "info")
-        if severity == "success":
-            st.success(f"**{alert['title']}** — {alert['detail']}")
-        elif severity == "warning":
-            st.warning(f"**{alert['title']}** — {alert['detail']}")
-        elif severity == "error":
-            st.error(f"**{alert['title']}** — {alert['detail']}")
-        else:
-            st.info(f"**{alert['title']}** — {alert['detail']}")
 
 
 def _render_quick_add(portfolio_dao, stock_dao, user_id: int):
@@ -217,7 +149,7 @@ def _render_empty_state(portfolio_dao, stock_dao, user_id: int):
         <div style="font-size: 3rem; margin-bottom: 12px;">&#127913;</div>
         <h2 style="color: #f59e0b; margin-bottom: 4px;">Welcome to The Mad Hatter</h2>
         <p style="color: #94a3b8; font-size: 1.05rem; max-width: 500px; margin: 0 auto;">
-            Your AI-powered financial advisor. Let's get you set up.
+            Your personal trading dashboard. Let's get you set up.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -277,28 +209,22 @@ def _render_empty_state(portfolio_dao, stock_dao, user_id: int):
         <div class="setup-card">
             <div style="font-size: 1.5rem; margin-bottom: 8px;">2&#65039;&#8419;</div>
             <div style="font-size: 1.1rem; font-weight: 700; color: #a78bfa; margin-bottom: 8px;">
-                Enable AI Insights
+                Browse News & Markets
             </div>
             <div style="color: #94a3b8; font-size: 0.9rem;">
-                Add your free Groq API key to unlock portfolio digests, trade ideas, and stock explanations.
+                Stay informed with curated financial news, video, and economic data from trusted sources.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        if st.button("Set Up AI in Settings", key="home_empty_ai"):
-            st.session_state["nav_target"] = "Settings"
-            st.rerun()
-
-        st.markdown("")
-        st.caption("Or explore without AI:")
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("Discover Stocks", key="home_empty_discover"):
-                st.session_state["nav_target"] = "Discover"
+            if st.button("News & Media", key="home_empty_news"):
+                st.session_state["nav_target"] = "News & Media"
                 st.rerun()
         with col_b:
-            if st.button("Portfolio Page", key="home_empty_portfolio_page"):
-                st.session_state["nav_target"] = "Portfolio"
+            if st.button("Markets", key="home_empty_markets"):
+                st.session_state["nav_target"] = "Markets"
                 st.rerun()
 
 
@@ -330,17 +256,7 @@ def render():
 
     st.divider()
 
-    # Full-width AI insights
-    st.subheader("AI Insights")
-    _render_ai_insights(user_id)
-
-    st.divider()
-
-    # Smart alerts as compact strip
-    _render_smart_alerts(user_id)
-
     # Quick-add bar + Holdings table
-    st.divider()
     _render_quick_add(portfolio_dao, stock_dao, user_id)
 
     st.markdown("")

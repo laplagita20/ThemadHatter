@@ -3,7 +3,7 @@
 import streamlit as st
 
 from config.settings import get_settings, invalidate_settings
-from database.models import UserPreferencesDAO, AppConfigDAO, AIAdviceCacheDAO
+from database.models import UserPreferencesDAO, AppConfigDAO
 from dashboard.components.auth import get_current_user_id
 from dashboard.components.teach_me import teach_me_sidebar
 
@@ -83,37 +83,14 @@ def render():
             value=prefs.get("experience_level", "intermediate"),
         )
 
-        ai_personality = st.selectbox(
-            "AI Communication Style",
-            ["balanced", "concise", "detailed", "encouraging"],
-            index=["balanced", "concise", "detailed", "encouraging"].index(
-                prefs.get("ai_personality", "balanced")
-            ),
-        )
-
         if st.form_submit_button("Save Profile", type="primary"):
             prefs_dao.update(
                 user_id,
                 risk_tolerance=risk_tolerance,
                 investment_horizon=investment_horizon,
                 experience_level=experience_level,
-                ai_personality=ai_personality,
             )
-            AIAdviceCacheDAO().invalidate(user_id)
-            st.success("Profile updated! AI advice will adapt to your new preferences.")
-
-    st.divider()
-
-    # AI Advisor API Key
-    st.subheader("AI Advisor")
-    _render_api_key_field(
-        "Groq API Key (Free)",
-        "GROQ_API_KEY",
-        "Powers AI insights, stock explanations, and trade ideas. "
-        "Get a free key from [console.groq.com](https://console.groq.com/)",
-        config_dao,
-        placeholder="gsk_...",
-    )
+            st.success("Profile updated!")
 
     st.divider()
 
@@ -161,14 +138,6 @@ def render():
 
     # Data Management
     st.subheader("Data Management")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Clear AI Cache", key="clear_ai_cache"):
-            AIAdviceCacheDAO().invalidate(user_id)
-            st.success("AI cache cleared. Fresh insights will be generated.")
-
-    with col2:
-        if st.button("Re-run Onboarding", key="rerun_onboarding"):
-            prefs_dao.update(user_id, onboarding_completed=0)
-            st.rerun()
+    if st.button("Re-run Onboarding", key="rerun_onboarding"):
+        prefs_dao.update(user_id, onboarding_completed=0)
+        st.rerun()

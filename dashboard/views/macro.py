@@ -7,6 +7,8 @@ from database.models import MacroDAO
 from analysis.macroeconomic import MacroeconomicAnalyzer
 from dashboard.components.charts import create_dalio_quadrant_chart
 from dashboard.components.tables import macro_indicators_table
+from dashboard.data.market_data import get_key_economic_indicators
+from collectors.fred_collector import FRED_SERIES
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -39,12 +41,163 @@ def _cached_macro_series(series_id: str, limit: int = 252) -> list[dict]:
     return list(macro_dao.get_series(series_id, limit=limit))
 
 
+def _mini_sparkline(values: list, color: str = "#2962FF") -> go.Figure:
+    """Create a tiny inline Plotly sparkline chart."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        y=values,
+        mode="lines",
+        line=dict(color=color, width=1.5),
+        fill="tozeroy",
+        fillcolor=f"rgba({_hex_to_rgb(color)}, 0.1)",
+    ))
+    fig.update_layout(
+        height=50, width=150,
+        margin=dict(l=0, r=0, t=0, b=0),
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        showlegend=False,
+    )
+    return fig
+
+
+def _hex_to_rgb(hex_color: str) -> str:
+    """Convert #RRGGBB to 'R, G, B' string."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"{r}, {g}, {b}"
+
+
+def _render_fed_indicators():
+    """Render the key Fed economic indicators as a 3x2 metric grid."""
+    indicators = get_key_economic_indicators()
+
+    if not indicators:
+        st.info("No economic data available. Run: `python main.py collect --source fred`")
+        return
+
+    # Define display order and colors
+    indicator_order = ["ICSA", "CPIAUCSL", "UNRATE", "FEDFUNDS", "UMCSENT", "GDP"]
+    colors = {
+        "ICSA": "#2962FF",
+        "CPIAUCSL": "#EF5350",
+        "UNRATE": "#FF9800",
+        "FEDFUNDS": "#26A69A",
+        "UMCSENT": "#AB47BC",
+        "GDP": "#26A69A",
+    }
+
+    # 3x2 grid
+    rows = [indicator_order[:3], indicator_order[3:]]
+    for row_ids in rows:
+        cols = st.columns(3)
+        for i, series_id in enumerate(row_ids):
+            with cols[i]:
+                data = indicators.get(series_id)
+                if not data:
+                    st.markdown(f"**{series_id}**")
+                    st.caption("No data")
+                    continue
+
+                fmt = data["format"]
+                val = data["value"]
+                change = data["change"]
+                unit = data["unit"]
+
+                # Format the value
+                formatted_val = f"{val:{fmt}}{unit}"
+
+                # Delta string
+                if change != 0:
+                    delta_str = f"{change:+{fmt}}"
+                else:
+                    delta_str = None
+
+                st.metric(
+                    label=data["name"],
+                    value=formatted_val,
+                    delta=delta_str,
+                )
+
+                # Sparkline
+                if data.get("sparkline") and len(data["sparkline"]) > 2:
+                    fig = _mini_sparkline(data["sparkline"], colors.get(series_id, "#2962FF"))
+                    st.plotly_chart(fig, config={"displayModeBar": False}, key=f"spark_{series_id}")
+
+                if data.get("date"):
+                    st.caption(f"As of {data['date']}")
+
+
+def _render_fed_data_explorer():
+    """Render the Fed Data Explorer with selectable FRED series."""
+    st.subheader("Fed Data Explorer")
+
+    # Build dropdown options from available FRED series
+    series_options = {f"{name} ({sid})": sid for sid, (name, _) in FRED_SERIES.items()}
+
+    selected_label = st.selectbox(
+        "Select Economic Series",
+        list(series_options.keys()),
+        key="fed_explorer_series",
+    )
+    selected_id = series_options[selected_label]
+
+    # Date range selector
+    range_options = {"1 Year": 252, "2 Years": 504, "5 Years": 1260, "10 Years": 2520, "All": 5000}
+    range_label = st.radio("Date Range", list(range_options.keys()), horizontal=True,
+                           index=2, key="fed_explorer_range")
+    limit = range_options[range_label]
+
+    # Fetch data
+    data = _cached_macro_series(selected_id, limit)
+
+    if not data:
+        st.info(f"No data available for {selected_id}. Run data collection first.")
+        return
+
+    dates = [d["date"] for d in reversed(data)]
+    values = [d["value"] for d in reversed(data)]
+
+    # Full-width chart
+    series_name = FRED_SERIES.get(selected_id, (selected_id, ""))[0]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=dates, y=values,
+        name=series_name,
+        line=dict(color="#2962FF", width=2),
+        fill="tozeroy",
+        fillcolor="rgba(41, 98, 255, 0.08)",
+    ))
+    fig.update_layout(
+        title=series_name,
+        xaxis_title="Date",
+        yaxis_title="Value",
+        height=400,
+        template="plotly_dark",
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    # Data table toggle
+    if st.toggle("Show Raw Data", key="fed_explorer_table"):
+        import pandas as pd
+        df = pd.DataFrame({"Date": dates, "Value": values})
+        st.dataframe(df, hide_index=True, width="stretch")
+
+
 def render():
     """Render the macro & market page."""
     st.header("Macro & Market Overview")
 
     macro_dao = MacroDAO()
-    analyzer = MacroeconomicAnalyzer()
+
+    # === Fed Economic Indicators (TOP of page) ===
+    st.subheader("Key Economic Indicators")
+    _render_fed_indicators()
+
+    st.divider()
 
     # Detect current regimes (cached)
     regimes = _cached_regimes()
@@ -83,10 +236,9 @@ def render():
 
     st.divider()
 
-    # === Key Economic Indicators ===
-    st.subheader("Key Economic Indicators")
+    # === Regime gauges ===
+    st.subheader("Regime Indicators")
 
-    # Display regime gauges
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -169,6 +321,11 @@ def render():
             st.error("HIGH recession probability - defensive posture recommended")
         elif recession_prob > 30:
             st.warning("Elevated recession risk - reduce equity exposure")
+
+    st.divider()
+
+    # === Fed Data Explorer ===
+    _render_fed_data_explorer()
 
     st.divider()
 

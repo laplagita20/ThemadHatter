@@ -1,6 +1,6 @@
 """Today — Morning Brief page.
 
-Pre-market report with ratings, movers, events, portfolio P&L, and AI digest.
+Pre-market report with ratings, movers, events, portfolio P&L, and smart alerts.
 """
 
 import streamlit as st
@@ -214,9 +214,8 @@ def _render_events_today():
 def _render_smart_alerts(user_id: int):
     """Section 4: Smart alerts."""
     try:
-        from analysis.ai_advisor import ClaudeAdvisor
-        advisor = ClaudeAdvisor(user_id)
-        alerts = advisor.get_smart_alerts()
+        from analysis.alerts import get_smart_alerts
+        alerts = get_smart_alerts(user_id)
     except Exception:
         alerts = []
 
@@ -267,29 +266,6 @@ def _render_overnight_news():
         st.markdown(f"**{title}**  \n{source} | {published} | {ticker} {sent_badge}")
 
 
-def _render_ai_digest(user_id: int):
-    """Section 6: AI morning digest (collapsible)."""
-    try:
-        from analysis.ai_advisor import ClaudeAdvisor
-        advisor = ClaudeAdvisor(user_id)
-
-        if not advisor.is_available():
-            st.caption("Set up your Groq API key in Settings to enable AI digest.")
-            return
-
-        with st.spinner("Generating morning digest..."):
-            digest = advisor.get_portfolio_digest()
-
-        if digest:
-            st.markdown(digest)
-            if st.button("Ask follow-up in Advisor", key="today_to_advisor"):
-                st.session_state["nav_target"] = "AI Advisor"
-                st.rerun()
-        else:
-            st.caption("Unable to generate digest right now.")
-    except Exception:
-        st.caption("AI digest unavailable.")
-
 
 def render():
     """Render the Today / Morning Brief page."""
@@ -325,7 +301,3 @@ def render():
     # Section 5: Overnight News (collapsible)
     with st.expander("Overnight News", expanded=False):
         _render_overnight_news()
-
-    # Section 6: AI Morning Digest (collapsible)
-    with st.expander("AI Morning Digest", expanded=False):
-        _render_ai_digest(user_id)

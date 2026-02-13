@@ -188,3 +188,76 @@ def get_all_latest_decisions() -> list[dict]:
         ))
     except Exception:
         return []
+
+
+# --- Fed Economic Data Helpers ---
+
+# Key indicators to display with human-readable names
+_FED_INDICATORS = {
+    "ICSA": {"name": "Initial Jobless Claims", "unit": "K", "divisor": 1000, "change_type": "wow", "format": ",.0f"},
+    "CPIAUCSL": {"name": "Inflation Rate (CPI)", "unit": "%", "divisor": 1, "change_type": "yoy", "format": ".1f"},
+    "UNRATE": {"name": "Unemployment Rate", "unit": "%", "divisor": 1, "change_type": "mom", "format": ".1f"},
+    "FEDFUNDS": {"name": "Fed Funds Rate", "unit": "%", "divisor": 1, "change_type": "mom", "format": ".2f"},
+    "UMCSENT": {"name": "Consumer Sentiment", "unit": "", "divisor": 1, "change_type": "mom", "format": ".1f"},
+    "GDP": {"name": "GDP Growth", "unit": "%", "divisor": 1, "change_type": "qoq", "format": ".1f"},
+}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_key_economic_indicators() -> dict:
+    """Fetch latest values for key Fed economic indicators (cached 1 hour).
+
+    Returns dict keyed by series_id: {name, value, prev_value, change,
+    change_pct, sparkline (last 12 data points), unit}.
+    """
+    from database.models import MacroDAO
+    macro_dao = MacroDAO()
+    results = {}
+
+    for series_id, meta in _FED_INDICATORS.items():
+        try:
+            data = list(macro_dao.get_series(series_id, limit=24))
+            if not data:
+                continue
+
+            # Data comes DESC, so [0] is latest
+            latest_val = data[0]["value"]
+            prev_val = data[1]["value"] if len(data) > 1 else latest_val
+
+            # For CPI, calculate YoY % change
+            if series_id == "CPIAUCSL" and len(data) >= 13:
+                yoy_pct = ((data[0]["value"] - data[12]["value"]) / data[12]["value"]) * 100
+                display_val = yoy_pct
+                prev_yoy = ((data[1]["value"] - data[13]["value"]) / data[13]["value"]) * 100 if len(data) >= 14 else yoy_pct
+                change = display_val - prev_yoy
+            elif series_id == "GDP" and len(data) >= 2:
+                # GDP: QoQ annualized change
+                qoq = ((data[0]["value"] - data[1]["value"]) / data[1]["value"]) * 100 * 4
+                display_val = qoq
+                prev_qoq = ((data[1]["value"] - data[2]["value"]) / data[2]["value"]) * 100 * 4 if len(data) >= 3 else qoq
+                change = display_val - prev_qoq
+            elif series_id == "ICSA":
+                display_val = latest_val / meta["divisor"]
+                change = (latest_val - prev_val) / meta["divisor"]
+            else:
+                display_val = latest_val / meta["divisor"]
+                change = (latest_val - prev_val) / meta["divisor"]
+
+            # Sparkline data (chronological order, last 12 points)
+            sparkline = [d["value"] for d in reversed(data[:12])]
+
+            results[series_id] = {
+                "name": meta["name"],
+                "value": display_val,
+                "raw_value": latest_val,
+                "prev_value": prev_val,
+                "change": change,
+                "sparkline": sparkline,
+                "unit": meta["unit"],
+                "format": meta["format"],
+                "date": data[0].get("date", ""),
+            }
+        except Exception:
+            continue
+
+    return results
