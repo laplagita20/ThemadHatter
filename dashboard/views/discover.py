@@ -12,6 +12,40 @@ from dashboard.views.recommendations import (
 )
 
 
+@st.cache_data(ttl=900, show_spinner="Scanning...")
+def _cached_quick_screen(tickers: tuple) -> list[dict]:
+    """Quick screen tickers via yfinance fast_info (cached 15 min)."""
+    import yfinance as yf
+    results = []
+    for ticker in tickers:
+        try:
+            info = yf.Ticker(ticker).fast_info
+            price = getattr(info, "last_price", None)
+            prev = getattr(info, "previous_close", None)
+            change = ((price - prev) / prev * 100) if price and prev else 0
+            results.append({
+                "Ticker": ticker,
+                "Price": f"${price:,.2f}" if price else "N/A",
+                "Change": f"{change:+.1f}%",
+                "Market Cap": f"${getattr(info, 'market_cap', 0) / 1e9:.1f}B"
+                if getattr(info, "market_cap", None) else "N/A",
+            })
+        except Exception:
+            continue
+    return results
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_top_picks() -> list[dict]:
+    """Fetch top picks from last 7 days decisions (cached 10 min)."""
+    db = get_connection()
+    return list(db.execute(
+        """SELECT * FROM decisions
+           WHERE decided_at >= datetime('now', '-7 days')
+           ORDER BY composite_score DESC"""
+    ))
+
+
 def _render_scanner_tab(user_id: int):
     """Market Scanner — scan curated universes for recommendations."""
     db = get_connection()
@@ -32,27 +66,8 @@ def _render_scanner_tab(user_id: int):
 
     if st.button("Scan Now", type="primary", key="discover_scan"):
         if quick_screen:
-            # Quick screen — just show basic info
-            import yfinance as yf
-            results = []
-            progress = st.progress(0)
-            for i, ticker in enumerate(tickers_to_scan):
-                try:
-                    info = yf.Ticker(ticker).fast_info
-                    price = getattr(info, "last_price", None)
-                    prev = getattr(info, "previous_close", None)
-                    change = ((price - prev) / prev * 100) if price and prev else 0
-                    results.append({
-                        "Ticker": ticker,
-                        "Price": f"${price:,.2f}" if price else "N/A",
-                        "Change": f"{change:+.1f}%",
-                        "Market Cap": f"${getattr(info, 'market_cap', 0) / 1e9:.1f}B"
-                        if getattr(info, "market_cap", None) else "N/A",
-                    })
-                except Exception:
-                    continue
-                progress.progress((i + 1) / len(tickers_to_scan))
-            progress.empty()
+            # Quick screen — cached batch fetch
+            results = _cached_quick_screen(tuple(tickers_to_scan))
             if results:
                 st.dataframe(pd.DataFrame(results), hide_index=True, width="stretch")
         else:
@@ -94,16 +109,10 @@ def _render_scanner_tab(user_id: int):
 
 def _render_top_picks_tab(user_id: int):
     """Top Picks — best current signals from database."""
-    db = get_connection()
-
     st.markdown("Strongest buy and sell signals from analyzed stocks.")
 
-    # Get all recent decisions
-    decisions = list(db.execute(
-        """SELECT * FROM decisions
-           WHERE decided_at >= datetime('now', '-7 days')
-           ORDER BY composite_score DESC"""
-    ))
+    # Get all recent decisions (cached)
+    decisions = _cached_top_picks()
 
     if not decisions:
         st.info("No recent analysis data. Run a scan in the Market Scanner tab first.")
@@ -315,16 +324,16 @@ def _render_news_tab(user_id: int):
 
 
 def render():
-    """Render the discover page."""
-    st.header("Discover")
+    """Render the discover page (scanner + top picks + news)."""
+    st.header("Market Scanner")
 
     user_id = get_current_user_id()
     if not user_id:
         st.warning("Please log in.")
         return
 
-    tab_scanner, tab_picks, tab_watchlist, tab_news = st.tabs([
-        "Market Scanner", "Top Picks", "My Watchlist", "Market News"
+    tab_scanner, tab_picks, tab_news = st.tabs([
+        "Scanner", "Top Picks", "Market News"
     ])
 
     with tab_scanner:
@@ -332,9 +341,6 @@ def render():
 
     with tab_picks:
         _render_top_picks_tab(user_id)
-
-    with tab_watchlist:
-        _render_watchlist_tab(user_id)
 
     with tab_news:
         _render_news_tab(user_id)

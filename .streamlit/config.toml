@@ -3,11 +3,12 @@ headless = true
 maxUploadSize = 10
 
 [theme]
-primaryColor = "#00d4aa"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#1a1a2e"
-textColor = "#e0e0e0"
-font = "monospace"
+base = "dark"
+primaryColor = "#2962FF"
+backgroundColor = "#131722"
+secondaryBackgroundColor = "#1E222D"
+textColor = "#D1D4DC"
+font = "sans serif"
 
 [browser]
 gatherUsageStats = false

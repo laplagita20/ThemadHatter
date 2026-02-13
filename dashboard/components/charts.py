@@ -1,8 +1,191 @@
-"""Reusable Plotly chart components for the dashboard."""
+"""Reusable chart components for the dashboard."""
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+
+
+def create_tv_chart(prices: list[dict], ticker: str = "",
+                    decisions: list[dict] = None, height: int = 500) -> bool:
+    """Render a TradingView-style candlestick chart with volume.
+
+    Uses streamlit-lightweight-charts for a native TradingView look.
+    Falls back to Plotly candlestick if the package is not installed.
+
+    Returns True if rendered successfully, False to signal fallback needed.
+    """
+    try:
+        from streamlit_lightweight_charts import renderLightweightCharts
+        import streamlit as st
+
+        if not prices:
+            return False
+
+        # Build candlestick data
+        candle_data = []
+        volume_data = []
+        for p in prices:
+            candle_data.append({
+                "time": p["date"],
+                "open": p["open"],
+                "high": p["high"],
+                "low": p["low"],
+                "close": p["close"],
+            })
+            is_up = p["close"] >= p["open"]
+            volume_data.append({
+                "time": p["date"],
+                "value": p.get("volume", 0),
+                "color": "rgba(38, 166, 154, 0.5)" if is_up else "rgba(239, 83, 80, 0.5)",
+            })
+
+        # SMA calculations
+        closes = [p["close"] for p in prices]
+        sma_50_data = []
+        sma_200_data = []
+        for i in range(len(closes)):
+            if i >= 49:
+                sma_50_data.append({
+                    "time": prices[i]["date"],
+                    "value": sum(closes[i - 49:i + 1]) / 50,
+                })
+            if i >= 199:
+                sma_200_data.append({
+                    "time": prices[i]["date"],
+                    "value": sum(closes[i - 199:i + 1]) / 200,
+                })
+
+        # Build series
+        series = [
+            {
+                "type": "Candlestick",
+                "data": candle_data,
+                "options": {
+                    "upColor": "#26A69A",
+                    "downColor": "#EF5350",
+                    "borderVisible": False,
+                    "wickUpColor": "#26A69A",
+                    "wickDownColor": "#EF5350",
+                },
+            },
+        ]
+
+        if sma_50_data:
+            series.append({
+                "type": "Line",
+                "data": sma_50_data,
+                "options": {
+                    "color": "#FF9800",
+                    "lineWidth": 1,
+                    "title": "SMA 50",
+                },
+            })
+
+        if sma_200_data:
+            series.append({
+                "type": "Line",
+                "data": sma_200_data,
+                "options": {
+                    "color": "#2962FF",
+                    "lineWidth": 1,
+                    "title": "SMA 200",
+                },
+            })
+
+        # Buy/sell markers from decisions
+        if decisions:
+            buy_markers = []
+            sell_markers = []
+            date_set = {p["date"] for p in prices}
+            for d in decisions:
+                date_str = d.get("decided_at", "")[:10]
+                if date_str not in date_set:
+                    continue
+                matching = [p for p in prices if p["date"] == date_str]
+                if not matching:
+                    continue
+                p = matching[0]
+                action = d.get("action", "")
+                if action in ("BUY", "STRONG_BUY"):
+                    buy_markers.append({
+                        "time": date_str,
+                        "position": "belowBar",
+                        "color": "#26A69A",
+                        "shape": "arrowUp",
+                        "text": "Buy",
+                    })
+                elif action in ("SELL", "STRONG_SELL"):
+                    sell_markers.append({
+                        "time": date_str,
+                        "position": "aboveBar",
+                        "color": "#EF5350",
+                        "shape": "arrowDown",
+                        "text": "Sell",
+                    })
+
+            if buy_markers or sell_markers:
+                # Markers are attached to the candlestick series
+                series[0]["markers"] = buy_markers + sell_markers
+
+        chart_options = {
+            "height": height,
+            "layout": {
+                "background": {"type": "solid", "color": "#131722"},
+                "textColor": "#D1D4DC",
+            },
+            "grid": {
+                "vertLines": {"color": "#1E222D"},
+                "horzLines": {"color": "#1E222D"},
+            },
+            "timeScale": {
+                "borderColor": "#2A2E39",
+                "timeVisible": False,
+            },
+            "rightPriceScale": {
+                "borderColor": "#2A2E39",
+            },
+        }
+
+        # Volume chart
+        volume_chart_options = {
+            "height": 120,
+            "layout": {
+                "background": {"type": "solid", "color": "#131722"},
+                "textColor": "#787B86",
+            },
+            "grid": {
+                "vertLines": {"color": "#1E222D"},
+                "horzLines": {"color": "#1E222D"},
+            },
+            "timeScale": {
+                "borderColor": "#2A2E39",
+                "timeVisible": False,
+            },
+            "rightPriceScale": {
+                "borderColor": "#2A2E39",
+            },
+        }
+
+        volume_series = [{
+            "type": "Histogram",
+            "data": volume_data,
+            "options": {
+                "priceFormat": {"type": "volume"},
+                "priceScaleId": "",
+            },
+        }]
+
+        renderLightweightCharts([
+            {"chart": chart_options, "series": series},
+            {"chart": volume_chart_options, "series": volume_series},
+        ], f"tv_chart_{ticker}")
+
+        return True
+
+    except ImportError:
+        return False
+    except Exception:
+        return False
 
 
 def create_candlestick_chart(prices: list[dict], ticker: str,

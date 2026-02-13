@@ -1,7 +1,4 @@
-"""The Mad Hatter v3 - AI-Powered Financial Advisor.
-
-Robinhood-inspired dashboard with AI insights, portfolio management,
-risk assessment, and macro regime detection.
+"""Mad Hatter Trading Dashboard — Professional AI-Powered Financial Analysis.
 
 Launch: streamlit run dashboard/app.py
   or:   python main.py dashboard
@@ -18,13 +15,13 @@ import streamlit as st
 
 # Page configuration - must be first Streamlit command
 st.set_page_config(
-    page_title="The Mad Hatter - AI Financial Advisor",
+    page_title="Mad Hatter Trading Dashboard",
     page_icon="\U0001f3a9",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Inject Mad Hatter theme
+# Inject professional theme
 from dashboard.theme import inject_theme, mad_hatter_header
 inject_theme()
 
@@ -76,23 +73,34 @@ mad_hatter_header()
 # Logout button + user info
 logout_button()
 
+# Market status indicator
+from dashboard.components.market_bar import get_market_status, render_market_bar
+status = get_market_status()
+status_class = status.lower().replace(" ", "-")
+st.sidebar.markdown(
+    f'<span class="market-status {status_class}">{status}</span>',
+    unsafe_allow_html=True,
+)
+
 st.sidebar.divider()
 
-# Navigation — 6 pages (reduced from 8)
+# Navigation — 7 pages
 PAGES = [
-    "Home",
-    "Advisor",
+    "Today",
     "Portfolio",
-    "Discover",
+    "Watchlist",
     "Analysis",
+    "Markets",
+    "AI Advisor",
     "Settings",
 ]
 PAGE_CAPTIONS = [
-    "AI insights & portfolio overview",
-    "Chat with AI, stock explainer",
+    "Morning brief & market pulse",
     "Holdings, P&L, DCA",
-    "Scanner, top picks, watchlist, news",
-    "Stock deep-dive, risk & macro",
+    "Track & screen stocks",
+    "Stock deep-dive",
+    "Macro, risk & scanner",
+    "Chat with AI advisor",
     "Preferences & API keys",
 ]
 
@@ -197,33 +205,39 @@ with st.sidebar.expander("System", expanded=False):
                     del st.session_state[key]
             st.rerun()
 
+# Market bar at top of every page
+render_market_bar()
+
 # Route to pages
-if page == "Home":
-    from dashboard.views.home import render
+if page == "Today":
+    from dashboard.views.today import render
     render()
-elif page == "Advisor":
+elif page == "AI Advisor":
     from dashboard.views.advisor import render
     render()
 elif page == "Portfolio":
     from dashboard.views.portfolio import render
     render()
-elif page == "Discover":
-    from dashboard.views.discover import render
+elif page == "Watchlist":
+    from dashboard.views.watchlist import render
     render()
 elif page == "Analysis":
-    # Combined: Stock Deep Dive, Risk Dashboard, Macro & Market
-    tab_stock, tab_risk, tab_macro = st.tabs([
-        "Stock Deep Dive", "Risk Dashboard", "Macro & Market"
+    from dashboard.views.analyzer import render
+    render()
+elif page == "Markets":
+    # Combined: Macro, Risk, Scanner
+    tab_macro, tab_risk, tab_scanner = st.tabs([
+        "Macro & Economy", "Risk Dashboard", "Market Scanner"
     ])
-    with tab_stock:
-        from dashboard.views.analyzer import render as analyzer_render
-        analyzer_render()
-    with tab_risk:
-        from dashboard.views.risk import render as risk_render
-        risk_render()
     with tab_macro:
         from dashboard.views.macro import render as macro_render
         macro_render()
+    with tab_risk:
+        from dashboard.views.risk import render as risk_render
+        risk_render()
+    with tab_scanner:
+        from dashboard.views.discover import render as discover_render
+        discover_render()
 elif page == "Settings":
     from dashboard.views.settings import render
     render()

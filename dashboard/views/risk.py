@@ -149,15 +149,21 @@ def render():
     # === What-If Slider ===
     st.subheader("What-If Scenario")
     portfolio_value = report.get("var", {}).get("portfolio_value") or report.get("monte_carlo", {}).get("portfolio_value", 0)
-    if portfolio_value:
+    portfolio_beta = report.get("var", {}).get("portfolio_beta", 1.0) or 1.0
+
+    @st.fragment
+    def _what_if_fragment():
+        if not portfolio_value:
+            return
         market_drop = st.slider("If the market drops by X%:", min_value=0, max_value=50, value=10, step=1)
-        portfolio_beta = report.get("var", {}).get("portfolio_beta", 1.0) or 1.0
         estimated_loss_pct = market_drop * portfolio_beta
         estimated_loss_dollar = portfolio_value * estimated_loss_pct / 100
         col_w1, col_w2, col_w3 = st.columns(3)
         col_w1.metric("Market Drop", f"-{market_drop}%")
         col_w2.metric("Est. Portfolio Loss", f"-{estimated_loss_pct:.1f}%", delta=f"-${estimated_loss_dollar:,.0f}")
         col_w3.metric("Portfolio After", f"${portfolio_value - estimated_loss_dollar:,.0f}")
+
+    _what_if_fragment()
 
     st.divider()
 

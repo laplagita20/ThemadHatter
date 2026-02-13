@@ -9,6 +9,36 @@ from dashboard.components.charts import create_dalio_quadrant_chart
 from dashboard.components.tables import macro_indicators_table
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_regimes() -> dict:
+    """Detect macro regimes (cached 1 hour)."""
+    analyzer = MacroeconomicAnalyzer()
+    return analyzer._detect_regimes()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_dalio_quadrant(regimes_key: str) -> dict | None:
+    """Detect Dalio quadrant from regimes (cached 1 hour)."""
+    analyzer = MacroeconomicAnalyzer()
+    regimes = analyzer._detect_regimes()
+    return analyzer._detect_dalio_quadrant(regimes)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_recession_probability(regimes_key: str) -> float | None:
+    """Calculate recession probability (cached 1 hour)."""
+    analyzer = MacroeconomicAnalyzer()
+    regimes = analyzer._detect_regimes()
+    return analyzer._calculate_recession_probability(regimes)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_macro_series(series_id: str, limit: int = 252) -> list[dict]:
+    """Fetch a FRED macro series from the database (cached 1 hour)."""
+    macro_dao = MacroDAO()
+    return list(macro_dao.get_series(series_id, limit=limit))
+
+
 def render():
     """Render the macro & market page."""
     st.header("Macro & Market Overview")
@@ -16,8 +46,8 @@ def render():
     macro_dao = MacroDAO()
     analyzer = MacroeconomicAnalyzer()
 
-    # Detect current regimes
-    regimes = analyzer._detect_regimes()
+    # Detect current regimes (cached)
+    regimes = _cached_regimes()
 
     if not regimes:
         st.warning("No macro data available. Run: python main.py collect --source fred")
@@ -25,7 +55,9 @@ def render():
 
     # === Dalio Quadrant ===
     st.subheader("Dalio's Economic Machine")
-    dalio = analyzer._detect_dalio_quadrant(regimes)
+    # Use a stable key derived from regimes for caching
+    regimes_key = str(sorted(regimes.items())) if regimes else ""
+    dalio = _cached_dalio_quadrant(regimes_key)
 
     col1, col2 = st.columns([2, 1])
 
@@ -128,7 +160,7 @@ def render():
 
     # === Recession Probability ===
     st.subheader("Recession Probability")
-    recession_prob = analyzer._calculate_recession_probability(regimes)
+    recession_prob = _cached_recession_probability(regimes_key)
     if recession_prob is not None:
         color = "red" if recession_prob > 40 else "orange" if recession_prob > 20 else "green"
         st.metric("Recession Probability", f"{recession_prob:.0f}%")
@@ -148,9 +180,9 @@ def render():
 def _render_yield_curve_chart(macro_dao):
     """Render yield curve chart using 2Y and 10Y treasury data."""
     try:
-        dgs10 = list(macro_dao.get_series("DGS10", limit=252))
-        dgs2 = list(macro_dao.get_series("DGS2", limit=252))
-        spread = list(macro_dao.get_series("T10Y2Y", limit=252))
+        dgs10 = _cached_macro_series("DGS10", 252)
+        dgs2 = _cached_macro_series("DGS2", 252)
+        spread = _cached_macro_series("T10Y2Y", 252)
 
         if not spread:
             st.info("No yield curve data available.")
@@ -181,7 +213,7 @@ def _render_yield_curve_chart(macro_dao):
 def _render_series_chart(macro_dao, series_id: str, title: str, color: str):
     """Render a FRED series line chart."""
     try:
-        data = list(macro_dao.get_series(series_id, limit=120))
+        data = _cached_macro_series(series_id, 120)
         if not data:
             return
 

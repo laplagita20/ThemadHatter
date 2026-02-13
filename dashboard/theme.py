@@ -1,208 +1,204 @@
-"""Mad Hatter finance theme - dark wonderland meets Wall Street."""
+"""Professional trading dashboard theme — TradingView/Bloomberg inspired."""
 
 import streamlit as st
 
-# Color palette
+# Color palette — TradingView-inspired
 COLORS = {
-    "bg_dark": "#0e1117",
-    "bg_card": "#1a1f2e",
-    "bg_sidebar": "#12152b",
-    "purple_deep": "#2d1b69",
-    "purple_accent": "#7c3aed",
-    "purple_glow": "#a78bfa",
-    "teal": "#06b6d4",
-    "teal_dark": "#0e7490",
-    "gold": "#f59e0b",
-    "gold_muted": "#d97706",
-    "green_profit": "#10b981",
-    "red_loss": "#ef4444",
-    "text_primary": "#e2e8f0",
-    "text_muted": "#94a3b8",
-    "border": "#334155",
+    "bg_primary": "#131722",
+    "bg_card": "#1E222D",
+    "bg_elevated": "#2A2E39",
+    "border": "#2A2E39",
+    "border_light": "#363A45",
+    "accent": "#2962FF",
+    "accent_hover": "#1E53E5",
+    "green": "#26A69A",
+    "green_bg": "rgba(38, 166, 154, 0.12)",
+    "red": "#EF5350",
+    "red_bg": "rgba(239, 83, 80, 0.12)",
+    "text_primary": "#D1D4DC",
+    "text_secondary": "#787B86",
+    "text_muted": "#5D606B",
+    "white": "#FFFFFF",
 }
 
 
 def inject_theme():
-    """Inject the Mad Hatter CSS theme into the Streamlit app."""
+    """Inject the professional trading dashboard CSS theme."""
     st.markdown("""
     <style>
-    /* === MAD HATTER FINANCE THEME === */
+    /* === PROFESSIONAL TRADING DASHBOARD THEME === */
 
     /* Main background */
     .stApp {
-        background: linear-gradient(180deg, #0e1117 0%, #12152b 50%, #0e1117 100%);
+        background: #131722;
     }
 
-    /* Sidebar styling */
+    /* Sidebar */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #12152b 0%, #1a1040 100%);
-        border-right: 1px solid #2d1b69;
+        background: #1E222D;
+        border-right: 1px solid #2A2E39;
     }
 
     section[data-testid="stSidebar"] .stMarkdown h1,
     section[data-testid="stSidebar"] .stMarkdown h2 {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #f59e0b 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800;
+        color: #D1D4DC;
+        font-weight: 700;
     }
 
-    /* Header styling with gold accent */
+    /* Headers */
     .stApp h1 {
-        background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #d97706 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800;
-        letter-spacing: -0.5px;
+        color: #D1D4DC !important;
+        font-weight: 700;
+        letter-spacing: -0.3px;
     }
 
     .stApp h2 {
-        color: #a78bfa !important;
-        border-bottom: 2px solid #2d1b69;
+        color: #D1D4DC !important;
+        border-bottom: 1px solid #2A2E39;
         padding-bottom: 8px;
+        font-weight: 600;
     }
 
     .stApp h3 {
-        color: #06b6d4 !important;
+        color: #787B86 !important;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem !important;
+        letter-spacing: 0.5px;
     }
 
-    /* Metric cards with glass morphism */
+    /* Metric cards — clean flat style */
     [data-testid="stMetric"] {
-        background: linear-gradient(135deg, rgba(45, 27, 105, 0.4) 0%, rgba(30, 20, 70, 0.6) 100%);
-        border: 1px solid rgba(124, 58, 237, 0.3);
-        border-radius: 12px;
-        padding: 16px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.1);
-        transition: all 0.3s ease;
-    }
-
-    [data-testid="stMetric"]:hover {
-        border-color: rgba(124, 58, 237, 0.6);
-        box-shadow: 0 4px 30px rgba(124, 58, 237, 0.2);
-        transform: translateY(-2px);
+        background: #1E222D;
+        border: 1px solid #2A2E39;
+        border-radius: 8px;
+        padding: 14px;
     }
 
     [data-testid="stMetric"] label {
-        color: #94a3b8 !important;
+        color: #787B86 !important;
         text-transform: uppercase;
         font-size: 0.7rem !important;
-        letter-spacing: 1px;
+        letter-spacing: 0.8px;
     }
 
     [data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: #f59e0b !important;
+        color: #D1D4DC !important;
         font-weight: 700;
+        font-size: 1.4rem !important;
     }
 
     /* Positive/negative delta colors */
     [data-testid="stMetricDelta"] svg[fill="rgba(9, 171, 59)"] ~ div {
-        color: #10b981 !important;
+        color: #26A69A !important;
     }
     [data-testid="stMetricDelta"] svg[fill="rgba(255, 43, 43)"] ~ div {
-        color: #ef4444 !important;
+        color: #EF5350 !important;
     }
 
-    /* DataFrames / tables */
+    /* DataFrames / tables — compact with alternating rows */
     .stDataFrame {
-        border: 1px solid #2d1b69;
-        border-radius: 8px;
+        border: 1px solid #2A2E39;
+        border-radius: 6px;
         overflow: hidden;
     }
 
     /* Buttons */
     .stButton > button[kind="primary"],
     .stButton > button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #7c3aed 0%, #2d1b69 100%) !important;
-        border: 1px solid #a78bfa !important;
+        background: #2962FF !important;
+        border: none !important;
         color: white !important;
-        border-radius: 8px;
+        border-radius: 6px;
         font-weight: 600;
-        transition: all 0.3s ease;
+        transition: background 0.2s ease;
     }
 
     .stButton > button[kind="primary"]:hover,
     .stButton > button[data-testid="baseButton-primary"]:hover {
-        background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%) !important;
-        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+        background: #1E53E5 !important;
     }
 
     .stButton > button[kind="secondary"],
     .stButton > button[data-testid="baseButton-secondary"] {
         background: transparent !important;
-        border: 1px solid #06b6d4 !important;
-        color: #06b6d4 !important;
-        border-radius: 8px;
+        border: 1px solid #363A45 !important;
+        color: #D1D4DC !important;
+        border-radius: 6px;
     }
 
     .stButton > button[kind="secondary"]:hover,
     .stButton > button[data-testid="baseButton-secondary"]:hover {
-        background: rgba(6, 182, 212, 0.1) !important;
+        background: rgba(41, 98, 255, 0.1) !important;
+        border-color: #2962FF !important;
     }
 
     /* Expander */
     .streamlit-expanderHeader {
-        background: rgba(45, 27, 105, 0.3) !important;
-        border: 1px solid rgba(124, 58, 237, 0.2);
-        border-radius: 8px;
-        color: #a78bfa !important;
+        background: #1E222D !important;
+        border: 1px solid #2A2E39;
+        border-radius: 6px;
+        color: #D1D4DC !important;
     }
 
-    /* Success / Warning / Error / Info alerts */
+    /* Alerts */
     .stAlert [data-testid="stAlertContentSuccess"] {
-        background: rgba(16, 185, 129, 0.15);
-        border-left: 4px solid #10b981;
+        background: rgba(38, 166, 154, 0.1);
+        border-left: 3px solid #26A69A;
     }
     .stAlert [data-testid="stAlertContentWarning"] {
-        background: rgba(245, 158, 11, 0.15);
-        border-left: 4px solid #f59e0b;
+        background: rgba(255, 152, 0, 0.1);
+        border-left: 3px solid #FF9800;
     }
     .stAlert [data-testid="stAlertContentError"] {
-        background: rgba(239, 68, 68, 0.15);
-        border-left: 4px solid #ef4444;
+        background: rgba(239, 83, 80, 0.1);
+        border-left: 3px solid #EF5350;
     }
     .stAlert [data-testid="stAlertContentInfo"] {
-        background: rgba(6, 182, 212, 0.15);
-        border-left: 4px solid #06b6d4;
+        background: rgba(41, 98, 255, 0.1);
+        border-left: 3px solid #2962FF;
     }
 
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
+        gap: 0;
+        border-bottom: 1px solid #2A2E39;
     }
     .stTabs [data-baseweb="tab"] {
-        background: rgba(45, 27, 105, 0.3);
-        border-radius: 8px 8px 0 0;
-        border: 1px solid rgba(124, 58, 237, 0.2);
-        color: #94a3b8;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        color: #787B86;
+        padding: 8px 16px;
     }
     .stTabs [aria-selected="true"] {
-        background: rgba(124, 58, 237, 0.3) !important;
-        border-color: #7c3aed !important;
-        color: #f59e0b !important;
+        background: transparent !important;
+        border-bottom: 2px solid #2962FF !important;
+        color: #D1D4DC !important;
     }
 
-    /* Selectbox / inputs */
+    /* Inputs */
     .stSelectbox > div > div,
     .stTextInput > div > div > input,
     .stNumberInput > div > div > input,
     .stTextArea > div > div > textarea {
-        background: rgba(26, 31, 46, 0.8) !important;
-        border: 1px solid #334155 !important;
-        border-radius: 8px;
-        color: #e2e8f0 !important;
+        background: #1E222D !important;
+        border: 1px solid #2A2E39 !important;
+        border-radius: 6px;
+        color: #D1D4DC !important;
     }
 
     .stSelectbox > div > div:focus-within,
     .stTextInput > div > div > input:focus,
     .stTextArea > div > div > textarea:focus {
-        border-color: #7c3aed !important;
-        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+        border-color: #2962FF !important;
+        box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.3) !important;
     }
 
     /* Divider */
     hr {
-        border-color: #2d1b69 !important;
+        border-color: #2A2E39 !important;
     }
 
     /* Radio buttons in sidebar */
@@ -211,157 +207,178 @@ def inject_theme():
     }
     .stRadio > div > label {
         padding: 8px 12px;
-        border-radius: 6px;
-        transition: all 0.2s ease;
+        border-radius: 4px;
+        transition: background 0.15s ease;
     }
     .stRadio > div > label:hover {
-        background: rgba(124, 58, 237, 0.15);
+        background: rgba(41, 98, 255, 0.1);
     }
     .stRadio > div > label[data-checked="true"] {
-        background: rgba(124, 58, 237, 0.25);
+        background: rgba(41, 98, 255, 0.15);
     }
 
     /* Progress bar */
     .stProgress > div > div > div {
-        background: linear-gradient(90deg, #7c3aed 0%, #06b6d4 100%) !important;
+        background: #2962FF !important;
     }
 
     /* Scrollbar */
     ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
     }
     ::-webkit-scrollbar-track {
-        background: #0e1117;
+        background: #131722;
     }
     ::-webkit-scrollbar-thumb {
-        background: #2d1b69;
-        border-radius: 4px;
+        background: #2A2E39;
+        border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: #7c3aed;
+        background: #363A45;
     }
 
-    /* Mad Hatter branding flourish */
+    /* Top accent line */
     section[data-testid="stSidebar"]::before {
         content: "";
         display: block;
-        height: 3px;
-        background: linear-gradient(90deg, #7c3aed, #f59e0b, #06b6d4, #7c3aed);
+        height: 2px;
+        background: #2962FF;
         margin-bottom: 1rem;
     }
 
-    /* Card-like containers */
+    /* Containers */
     [data-testid="stExpander"] {
-        background: rgba(26, 31, 46, 0.5);
-        border: 1px solid rgba(124, 58, 237, 0.2);
-        border-radius: 12px;
+        background: #1E222D;
+        border: 1px solid #2A2E39;
+        border-radius: 6px;
         overflow: hidden;
     }
 
-    /* === AI ADVISOR STYLES === */
-
     /* Chat messages */
     [data-testid="stChatMessage"] {
-        background: rgba(26, 31, 46, 0.6) !important;
-        border: 1px solid rgba(124, 58, 237, 0.15);
-        border-radius: 12px;
+        background: #1E222D !important;
+        border: 1px solid #2A2E39;
+        border-radius: 8px;
         padding: 12px 16px;
         margin-bottom: 8px;
     }
 
-    /* User messages slightly different */
     [data-testid="stChatMessage"][data-testid*="user"] {
-        background: rgba(45, 27, 105, 0.3) !important;
-        border-color: rgba(124, 58, 237, 0.3);
+        background: rgba(41, 98, 255, 0.08) !important;
+        border-color: rgba(41, 98, 255, 0.2);
     }
 
-    /* Chat input */
     [data-testid="stChatInput"] textarea {
-        background: rgba(26, 31, 46, 0.8) !important;
-        border: 1px solid rgba(124, 58, 237, 0.3) !important;
-        border-radius: 12px;
-        color: #e2e8f0 !important;
+        background: #1E222D !important;
+        border: 1px solid #2A2E39 !important;
+        border-radius: 8px;
+        color: #D1D4DC !important;
     }
 
     [data-testid="stChatInput"] textarea:focus {
-        border-color: #7c3aed !important;
-        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+        border-color: #2962FF !important;
+        box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.3) !important;
     }
 
     /* Smart alert cards */
     .smart-alert {
-        background: rgba(26, 31, 46, 0.5);
-        border-radius: 10px;
+        background: #1E222D;
+        border-radius: 6px;
         padding: 12px 16px;
         margin-bottom: 8px;
         border-left: 3px solid;
     }
-    .smart-alert.success { border-left-color: #10b981; }
-    .smart-alert.warning { border-left-color: #f59e0b; }
-    .smart-alert.info { border-left-color: #06b6d4; }
-    .smart-alert.error { border-left-color: #ef4444; }
+    .smart-alert.success { border-left-color: #26A69A; }
+    .smart-alert.warning { border-left-color: #FF9800; }
+    .smart-alert.info { border-left-color: #2962FF; }
+    .smart-alert.error { border-left-color: #EF5350; }
 
-    /* AI insight card */
-    .ai-insight-card {
-        background: linear-gradient(135deg, rgba(45, 27, 105, 0.3), rgba(6, 182, 212, 0.1));
-        border: 1px solid rgba(124, 58, 237, 0.3);
-        border-radius: 12px;
-        padding: 20px;
-        margin: 8px 0;
-    }
-
-    /* Onboarding progress */
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, #7c3aed 0%, #f59e0b 100%) !important;
-        border-radius: 4px;
-    }
-
-    /* Setup cards for empty state and CTAs */
+    /* Setup cards */
     .setup-card {
-        background: linear-gradient(135deg, rgba(45, 27, 105, 0.4), rgba(30, 20, 70, 0.6));
-        border: 1px solid rgba(124, 58, 237, 0.3);
-        border-radius: 12px;
+        background: #1E222D;
+        border: 1px solid #2A2E39;
+        border-radius: 8px;
         padding: 24px;
         margin-bottom: 16px;
-        transition: all 0.3s ease;
     }
     .setup-card:hover {
-        border-color: rgba(124, 58, 237, 0.6);
-        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.15);
+        border-color: #363A45;
     }
 
     /* API key status cards */
     .api-key-card {
-        background: rgba(26, 31, 46, 0.6);
-        border: 1px solid #334155;
-        border-radius: 10px;
+        background: #1E222D;
+        border: 1px solid #2A2E39;
+        border-radius: 6px;
         padding: 16px;
         margin-bottom: 12px;
     }
     .api-key-card.configured {
-        border-color: rgba(16, 185, 129, 0.4);
+        border-color: rgba(38, 166, 154, 0.4);
     }
+
+    /* Market bar component */
+    .market-bar {
+        display: flex;
+        gap: 16px;
+        padding: 8px 0;
+        border-bottom: 1px solid #2A2E39;
+        margin-bottom: 16px;
+    }
+    .market-bar-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+    }
+    .market-bar-item .symbol {
+        color: #787B86;
+        font-weight: 600;
+    }
+    .market-bar-item .price {
+        color: #D1D4DC;
+    }
+    .market-bar-item .change-up {
+        color: #26A69A;
+        font-weight: 600;
+    }
+    .market-bar-item .change-down {
+        color: #EF5350;
+        font-weight: 600;
+    }
+
+    /* Market status badge */
+    .market-status {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .market-status.open { background: rgba(38, 166, 154, 0.15); color: #26A69A; }
+    .market-status.closed { background: rgba(120, 123, 134, 0.15); color: #787B86; }
+    .market-status.pre-market { background: rgba(255, 152, 0, 0.15); color: #FF9800; }
+    .market-status.after-hours { background: rgba(41, 98, 255, 0.15); color: #2962FF; }
+
     </style>
     """, unsafe_allow_html=True)
 
 
 def mad_hatter_header():
-    """Render the Mad Hatter branded header."""
+    """Render the branded header in sidebar."""
     st.markdown("""
     <div style="text-align: center; padding: 0.5rem 0 1rem 0;">
-        <div style="font-size: 2.5rem; font-weight: 800;
-                    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 30%, #d97706 70%, #f59e0b 100%);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-                    letter-spacing: -1px; line-height: 1.1;">
-            The Mad Hatter
+        <div style="font-size: 1.8rem; font-weight: 700;
+                    color: #D1D4DC;
+                    letter-spacing: -0.5px; line-height: 1.1;">
+            Mad Hatter
         </div>
-        <div style="font-size: 0.85rem; color: #06b6d4; letter-spacing: 3px;
+        <div style="font-size: 0.75rem; color: #787B86; letter-spacing: 2px;
                     text-transform: uppercase; margin-top: 4px;">
-            AI Financial Advisor
-        </div>
-        <div style="height: 2px; margin-top: 12px;
-                    background: linear-gradient(90deg, transparent, #7c3aed, #f59e0b, #06b6d4, transparent);">
+            Trading Dashboard
         </div>
     </div>
     """, unsafe_allow_html=True)

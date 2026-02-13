@@ -638,8 +638,12 @@ def render():
 
     st.divider()
 
-    # --- Recurring Investments Section ---
-    _render_recurring_investments(holdings, user_id)
+    # --- Recurring Investments Section (fragment to avoid rerunning price fetches) ---
+    @st.fragment
+    def _dca_fragment():
+        _render_recurring_investments(holdings, user_id)
+
+    _dca_fragment()
 
     st.divider()
 
